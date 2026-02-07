@@ -1,7 +1,6 @@
 #include "skip_list.h"
 
 #include <bit>
-#include <iostream>
 #include <stdexcept>
 
 namespace MyLSMTree::Memtable {
@@ -110,7 +109,7 @@ void SkipList::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size)
     }
 
     if (kv_count == kv_count_limit_) {
-        std::cout << "kv limit reached!\n";
+        DumpAllToFd();
     }
 }
 
@@ -134,6 +133,10 @@ void SkipList::WriteToNode(Node& node, const uint8_t* kv, uint32_t key_size, uin
     node.key_size = key_size;
     node.value_size = value_size;
     kvbuffer_.Append(kv, key_size + value_size);
+}
+
+void SkipList::DumpAllToFd() {
+    // TODO
 }
 
 }  // namespace MyLSMTree::Memtable

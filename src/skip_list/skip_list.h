@@ -1,5 +1,5 @@
 #pragma once
-#define SKIPLIST_STATISTICS
+// #define SKIPLIST_STATISTICS
 
 
 #include <algorithm>
@@ -38,6 +38,7 @@ public:
 private:
     uint8_t RandomLevel();
     void WriteToNode(Node& node, const uint8_t* kv, uint32_t key_size, uint32_t value_size);
+    void DumpAllToFd();
 
 private:
     std::vector<Node> nodes_;
