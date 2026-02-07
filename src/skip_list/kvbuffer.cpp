@@ -7,7 +7,7 @@
 namespace MyLSMTree {
 namespace Memtable {
 
-KVBuffer::KVBuffer(uint32_t max_slice_size) : max_slice_size_(max_slice_size) {
+KVBuffer::KVBuffer(uint32_t slice_size) : slice_size_(slice_size) {
     AllocateSlice();
     if (!AllocatedSuccessfully()) {
         DeleteInvalidSlicesAndThrow(0);
@@ -23,29 +23,72 @@ KVBuffer::~KVBuffer() noexcept {
 void KVBuffer::Append(const uint8_t* data, uint32_t size) {
     uint32_t original_slice_count = slices_.size();
     while (size) {
-        if (slices_.back().size == 0) {
+        if (slices_.back().size == slice_size_) {
             AllocateSlice();
             if (!AllocatedSuccessfully()) {
                 DeleteInvalidSlicesAndThrow(slices_.size() - original_slice_count);
             }
         }
 
-        uint32_t to_write = size < slices_.back().size ? size : slices_.back().size;
+        uint32_t to_write = size < slice_size_ - slices_.back().size ? size : slice_size_ - slices_.back().size;
         std::memcpy(slices_.back().data + slices_.back().size, data, to_write);
 
         data += to_write;
         size -= to_write;
+        slices_.back().size += to_write;
     }
 }
 
-bool KVBuffer::WriteAll(int fd) const {
-    for (const auto& slice : slices_) {
-        if (write(fd, slice.data, slice.size) != slice.size) {
-            return false;
-        }
-    }
-    return true;
+size_t KVBuffer::GetTotalKVSizeInBytes() const {
+    return (slices_.size() - 1) * slice_size_ + slices_.back().size;
 }
+
+int KVBuffer::Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) const {
+    uint32_t i = rhs_offset / slice_size_;
+    uint32_t j = (rhs_offset + size) / slice_size_;
+    uint32_t rem = rhs_offset % slice_size_;
+    uint32_t to_cmp = size < slice_size_ - rem ? size : slice_size_ - rem;
+    int res = std::memcmp(lhs, slices_[i].data + rem, to_cmp);
+    lhs += to_cmp;
+    size -= to_cmp;
+    ++i;
+    while (i < j && res == 0) {
+        res = std::memcmp(lhs, slices_[i].data, slice_size_);
+        lhs += slice_size_;
+        size -= slice_size_;
+    }
+    if (res != 0) {
+        return res;
+    }
+    res = std::memcmp(lhs, slices_[j].data, size);
+    return res;
+}
+
+void KVBuffer::Write(uint8_t* dest, size_t offset, uint32_t size) const {
+    uint32_t i = offset / slice_size_;
+    uint32_t j = (offset + size) / slice_size_;
+    uint32_t rem = offset % slice_size_;
+    uint32_t to_write = size < slice_size_ - rem ? size : slice_size_ - rem;
+    std::memcpy(dest, slices_[i].data + rem, to_write);
+    dest += to_write;
+    size -= to_write;
+    ++i;
+    for (; i < j; ++i) {
+        std::memcpy(dest, slices_[i].data, slice_size_);
+        dest += slice_size_;
+        size -= slice_size_;
+    }
+    std::memcpy(dest, slices_[j].data, size);
+}
+
+// bool KVBuffer::WriteAllToFd(int fd) const {
+//     for (const auto& slice : slices_) {
+//         if (write(fd, slice.data, slice.size) != slice.size) {
+//             return false;
+//         }
+//     }
+//     return true;
+// }
 
 void KVBuffer::Clear() {
     for (size_t i = 1; i < slices_.size(); ++i) {
@@ -56,7 +99,7 @@ void KVBuffer::Clear() {
 }
 
 void KVBuffer::AllocateSlice() {
-    slices_.emplace_back(static_cast<uint8_t*>(std::malloc(max_slice_size_)), 0);
+    slices_.emplace_back(static_cast<uint8_t*>(std::malloc(slice_size_)), 0);
 }
 
 bool KVBuffer::AllocatedSuccessfully() const {

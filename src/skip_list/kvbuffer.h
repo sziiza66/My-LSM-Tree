@@ -4,8 +4,7 @@
 #include <unistd.h>
 #include <vector>
 
-namespace MyLSMTree {
-namespace Memtable {
+namespace MyLSMTree::Memtable {
 
 class KVBuffer {
     struct Slice {
@@ -14,11 +13,14 @@ class KVBuffer {
     };
 
 public:
-    KVBuffer(uint32_t max_slice_size);
+    KVBuffer(uint32_t slice_size);
     ~KVBuffer() noexcept;
 
     void Append(const uint8_t* data, uint32_t size);
-    bool WriteAll(int fd) const;
+    size_t GetTotalKVSizeInBytes() const;
+    int Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) const;
+    void Write(uint8_t* dest, size_t offset, uint32_t size) const;
+    // bool WriteAllToFd(int fd) const;
 
     void Clear();
 
@@ -29,8 +31,7 @@ private:
 
 private:
     std::vector<Slice> slices_;
-    uint32_t max_slice_size_;
+    uint32_t slice_size_;
 };
 
-}  // namespace Memtable
-}  // namespace MyLSMTree
+}  // namespace MyLSMTree::Memtable

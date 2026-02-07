@@ -15,7 +15,7 @@ if (MSVC)
 else()
     # additional warnings
     add_compile_options(-Wall -Wextra -Wpedantic)
-    set(CMAKE_CXX_FLAGS_DEBUG "-g")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
     if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
         set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto")
         # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -fomit-frame-pointer -fno-semantic-interposition -ftree-vectorize -flto -unroll-loops -mavx2 -mbmi -mbmi2 -mpopcnt -mlzcnt -mfma -mabm")
@@ -27,6 +27,7 @@ message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 
 SET(SOURCES
     src/main.cpp
-    src/skip_list/skip_list.cpp)
+    src/skip_list/skip_list.cpp
+    src/skip_list/kvbuffer.cpp)
 
 add_executable(main ${SOURCES})
