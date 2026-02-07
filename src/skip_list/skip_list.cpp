@@ -20,11 +20,14 @@ SkipList::SkipList(uint32_t kv_count_limit, uint32_t kv_buffer_slice_size, int d
       kvbuffer_(kv_buffer_slice_size),
       kv_count_limit_(kv_count_limit),
       level_count_limit_(kv_count_limit
-                             ? std::min(kMaxLevel, static_cast<uint32_t>(std::countr_zero(kv_count_limit) + 3))
+                             ? std::min(kMaxLevel, static_cast<uint32_t>(std::bit_width(kv_count_limit) + 3))
                              : ThrowIfZeroLimit()),
       dump_fd_(dump_fd) {
     nodes_.reserve(kv_count_limit * level_count_limit_ + 1);
     nodes_.emplace_back();
+#ifdef SKIPLIST_STATISTICS
+    std::fill_n(statistics, kMaxLevel, 0);
+#endif
 }
 
 int SkipList::Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) const {
@@ -40,6 +43,7 @@ int SkipList::Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) c
                     ? -1
                     : kvbuffer_.Compare(key, nodes_[next_node].key_offset,
                                         key_size < nodes_[next_node].key_size ? key_size : nodes_[next_node].key_size);
+            cmp = cmp != 0 ? cmp : (key_size < nodes_[next_node].key_size ? -1 : (key_size > nodes_[next_node].key_size ? 1 : 0));
             if (cmp == 0) {
                 const auto& node = nodes_[next_node];
                 if (node.value_size == 0) {
@@ -47,7 +51,7 @@ int SkipList::Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) c
                 }
                 kvbuffer_.Write(value_dest, node.key_offset + node.key_size, node.value_size);
                 return 1;
-            } else if (cmp == -1) {
+            } else if (cmp < 0) {
                 break;
             }
             cur_node = next_node;
@@ -57,7 +61,8 @@ int SkipList::Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) c
 }
 
 void SkipList::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size) {
-    if (!kv_count++) {
+    if (!kv_count) {
+        ++kv_count;
         nodes_.emplace_back();
         auto& new_node = nodes_.back();
         new_node.height = RandomLevel();
@@ -77,6 +82,7 @@ void SkipList::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size)
                               : kvbuffer_.Compare(
                                     kv, nodes_[next_node].key_offset,
                                     key_size < nodes_[next_node].key_size ? key_size : nodes_[next_node].key_size);
+                cmp = cmp != 0 ? cmp : (key_size < nodes_[next_node].key_size ? -1 : (key_size > nodes_[next_node].key_size ? 1 : 0));
                 if (cmp == 0) {
                     if (value_size == 0) {
                         nodes_[next_node].value_size = 0;
@@ -84,7 +90,7 @@ void SkipList::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size)
                         WriteToNode(nodes_[next_node], kv, key_size, value_size);
                     }
                     return;
-                } else if (cmp == -1) {
+                } else if (cmp < 0) {
                     break;
                 }
                 cur_node = next_node;
@@ -100,6 +106,7 @@ void SkipList::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size)
             prev_node.next[level] = nodes_.size() - 1;
         }
         WriteToNode(nodes_.back(), kv, key_size, value_size);
+        ++kv_count;
     }
 
     if (kv_count == kv_count_limit_) {
@@ -116,6 +123,9 @@ uint8_t SkipList::RandomLevel() {
     while (level < level_count_limit_ && rng_gen_() % 2) {
         ++level;
     }
+#ifdef SKIPLIST_STATISTICS
+    ++statistics[level];
+#endif
     return level + 1;
 }
 

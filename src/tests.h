@@ -1,32 +1,45 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <random>
 #include <vector>
 #include "skip_list/skip_list.h"
 
 void Test_SkipList_Correctness() {
-
     struct Param {
         uint32_t key_size;
         uint32_t value_size;
     };
 
-    size_t kvs_cnt = 1;
+    size_t kvs_cnt = 100;
+    size_t max_key_size = 2000;
+    size_t max_value_size = 10000;
 
     using MyLSMTree::Memtable::SkipList;
-    for (size_t i = 0; i < 10; ++i) {
+    for (size_t i = 0; i < 100; ++i) {
+        // std::cout << i << std::endl;
         std::mt19937 gen(i);
         std::vector<std::vector<uint8_t>> kvs(kvs_cnt);
         std::vector<Param> params(kvs_cnt);
         for (size_t j = 0; j < kvs.size(); ++j) {
-            params[j] = {(uint32_t)(gen() % 1000 + 1), (uint32_t)(gen() % 1000 + 0)};
-            kvs[j].resize(params[j].key_size + params[j].value_size);
-            for (size_t k = 0; k < params[j].key_size + params[j].value_size; ++k) {
-                kvs[j][k] = gen() % 256;
-            }
+            bool ok;
+            do {
+                params[j] = {(uint32_t)(gen() % max_key_size + 1), (uint32_t)(gen() % (max_value_size + 1))};
+                kvs[j].resize(params[j].key_size + params[j].value_size);
+                for (size_t k = 0; k < params[j].key_size + params[j].value_size; ++k) {
+                    kvs[j][k] = gen() % 256;
+                }
+                ok = true;
+                for (size_t k = 0; k < j && ok; ++k) {
+                    if (params[j].key_size != params[k].key_size) {
+                        continue;
+                    }
+                    ok = std::memcmp(kvs[j].data(), kvs[k].data(), params[j].key_size) != 0;
+                }
+            } while (!ok);
         }
-        SkipList list(10000, 1000000, 0, 6);
+        SkipList list(10000, 10000, 0, 6);
         for (size_t j = 0; j < kvs.size(); ++j) {
             list.Insert(kvs[j].data(), params[j].key_size, params[j].value_size);
         }

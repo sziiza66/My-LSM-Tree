@@ -61,6 +61,7 @@ int KVBuffer::Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) cons
         return res;
     }
     res = std::memcmp(lhs, slices_[j].data, size);
+    
     return res;
 }
 

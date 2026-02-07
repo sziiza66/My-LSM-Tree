@@ -1,4 +1,6 @@
 #pragma once
+#define SKIPLIST_STATISTICS
+
 
 #include <algorithm>
 #include <cstdint>
@@ -45,6 +47,9 @@ private:
     uint32_t level_count_limit_;
     uint32_t kv_count = 0;
     int dump_fd_;
+#ifdef SKIPLIST_STATISTICS
+    uint32_t statistics[kMaxLevel];
+#endif
 };
 
 }  // namespace MyLSMTree::Memtable
