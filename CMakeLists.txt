@@ -27,7 +27,14 @@ message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 
 SET(SOURCES
     src/main.cpp
-    src/skip_list/skip_list.cpp
-    src/skip_list/kvbuffer.cpp)
+    src/lsm_tree/memtable/skip_list/skip_list.cpp
+    src/lsm_tree/memtable/skip_list/kvbuffer.cpp)
 
 add_executable(main ${SOURCES})
+
+set(XXHASH_BUILD_XXHSUM OFF)        # Don't build command line tool
+option(BUILD_SHARED_LIBS OFF)       # Build static library
+
+add_subdirectory(xxhash/build/cmake xxhash_build EXCLUDE_FROM_ALL)
+target_link_libraries(main PRIVATE xxHash::xxhash)
+

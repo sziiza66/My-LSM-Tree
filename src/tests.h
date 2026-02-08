@@ -4,7 +4,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include "skip_list/skip_list.h"
+#include "memtable/skip_list/skip_list.h"
 
 void Test_SkipList_Correctness() {
     struct Param {
@@ -39,7 +39,7 @@ void Test_SkipList_Correctness() {
                 }
             } while (!ok);
         }
-        SkipList list(10000, 10000, 0, 6);
+        SkipList list(10000, 10000, 6);
         for (size_t j = 0; j < kvs.size(); ++j) {
             list.Insert(kvs[j].data(), params[j].key_size, params[j].value_size);
         }

@@ -61,7 +61,7 @@ int KVBuffer::Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) cons
         return res;
     }
     res = std::memcmp(lhs, slices_[j].data, size);
-    
+
     return res;
 }
 
@@ -82,21 +82,30 @@ void KVBuffer::Write(uint8_t* dest, size_t offset, uint32_t size) const {
     std::memcpy(dest, slices_[j].data, size);
 }
 
-// bool KVBuffer::WriteAllToFd(int fd) const {
-//     for (const auto& slice : slices_) {
-//         if (write(fd, slice.data, slice.size) != slice.size) {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
+void KVBuffer::WriteToFd(int fd, size_t offset, uint32_t size) const {
+    uint32_t i = offset / slice_size_;
+    uint32_t j = (offset + size) / slice_size_;
+    uint32_t rem = offset % slice_size_;
+    uint32_t to_write = size < slice_size_ - rem ? size : slice_size_ - rem;
+    write(fd, slices_[i].data + rem, to_write);
+    size -= to_write;
+    ++i;
+    for (; i < j; ++i) {
+        write(fd, slices_[i].data, slice_size_);
+        size -= slice_size_;
+    }
+    write(fd, slices_[j].data, size);
+}
 
 void KVBuffer::Clear() {
-    for (size_t i = 1; i < slices_.size(); ++i) {
-        std::free(slices_[i].data);
+    // for (size_t i = 1; i < slices_.size(); ++i) {
+    //     std::free(slices_[i].data);
+    // }
+    // slices_.resize(1);
+    // slices_.back().size = 0;
+    for (auto& slice : slices_) {
+        slice.size = 0;
     }
-    slices_.resize(1);
-    slices_.back().size = 0;
 }
 
 void KVBuffer::AllocateSlice() {

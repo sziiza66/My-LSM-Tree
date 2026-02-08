@@ -13,14 +13,14 @@ class KVBuffer {
     };
 
 public:
-    KVBuffer(uint32_t slice_size);
+    explicit KVBuffer(uint32_t slice_size);
     ~KVBuffer() noexcept;
 
     void Append(const uint8_t* data, uint32_t size);
     size_t GetTotalKVSizeInBytes() const;
     int Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) const;
     void Write(uint8_t* dest, size_t offset, uint32_t size) const;
-    // bool WriteAllToFd(int fd) const;
+    void WriteToFd(int fd, size_t offset, uint32_t size) const;
 
     void Clear();
 
