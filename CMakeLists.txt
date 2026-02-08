@@ -27,8 +27,11 @@ message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 
 SET(SOURCES
     src/main.cpp
+    src/lsm_tree/memtable/memtable.cpp
     src/lsm_tree/memtable/skip_list/skip_list.cpp
-    src/lsm_tree/memtable/skip_list/kvbuffer.cpp)
+    src/lsm_tree/memtable/skip_list/kvbuffer.cpp
+    src/lsm_tree/memtable/bloom_filter/bitset.cpp
+    src/lsm_tree/memtable/bloom_filter/bloom_filter.cpp)
 
 add_executable(main ${SOURCES})
 

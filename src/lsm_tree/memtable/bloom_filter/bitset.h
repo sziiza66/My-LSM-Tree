@@ -17,6 +17,7 @@ public:
 
     const uint64_t* Data() const;
     size_t SizeInBytes() const;
+    size_t SizeInBits() const;
 
 private:
     std::vector<uint64_t> data_;

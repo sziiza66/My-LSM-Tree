@@ -2,7 +2,8 @@
 
 int main() {
 
-    Test_SkipList_Correctness();
+    Test_SkipListCorrectness();
+    Test_FilterCorrectness();
 
     return 0;
 }
