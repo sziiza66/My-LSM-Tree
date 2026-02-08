@@ -1,5 +1,4 @@
 #pragma once
-// #define SKIPLIST_STATISTICS
 
 #include <algorithm>
 #include <cstdint>
@@ -52,7 +51,7 @@ private:
     KVBuffer kvbuffer_;
     size_t level_count_limit_;
     size_t kv_count_ = 0;
-#ifdef SKIPLIST_STATISTICS
+#ifndef NDEBUG
     uint32_t statistics[kMaxLevel];
 #endif
 };

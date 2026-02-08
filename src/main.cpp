@@ -1,9 +1,11 @@
+#ifndef NDEBUG
 #include "tests.h"
+#endif
 
 int main() {
-
-    Test_SkipListCorrectness();
-    Test_FilterCorrectness();
+#ifndef NDEBUG
+    Test_All();
+#endif
 
     return 0;
 }

@@ -205,3 +205,9 @@ void Test_MemtableCorrectness() {
         assert(table.Find(nullptr, c.data(), c.size()) == LookUpResult::ValueNotFound);
     }
 }
+
+void Test_All() {
+    Test_SkipListCorrectness();
+    Test_FilterCorrectness();
+    Test_MemtableCorrectness();
+}

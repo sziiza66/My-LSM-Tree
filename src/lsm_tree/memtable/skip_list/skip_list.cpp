@@ -21,7 +21,7 @@ SkipList::SkipList(size_t kv_count_limit, uint32_t kv_buffer_slice_size, std::mt
                                         : ThrowIfZeroLimit()) {
     nodes_.reserve(kv_count_limit * level_count_limit_ + 1);
     nodes_.emplace_back();
-#ifdef SKIPLIST_STATISTICS
+#ifndef NDEBUG
     std::fill_n(statistics, kMaxLevel, 0);
 #endif
 }
@@ -143,7 +143,7 @@ uint8_t SkipList::RandomLevel() {
     while (level < level_count_limit_ && rng_gen_() % 2) {
         ++level;
     }
-#ifdef SKIPLIST_STATISTICS
+#ifndef NDEBUG
     ++statistics[level];
 #endif
     return level + 1;
