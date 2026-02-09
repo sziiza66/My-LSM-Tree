@@ -5,15 +5,13 @@
 #include <random>
 #include <vector>
 #include "lsm_tree/memtable/memtable.h"
+#include "lsm_tree/memtable/skip_list/skip_list.h"
+#include "lsm_tree/common.h"
 
 void Test_SkipListCorrectness() {
     using MyLSMTree::Memtable::SkipList;
     using namespace MyLSMTree::Memtable;
-
-    struct Param {
-        uint32_t key_size;
-        uint32_t value_size;
-    };
+    using namespace MyLSMTree;
 
     size_t kvs_cnt = 100;
     size_t max_key_size = 2000;
@@ -22,72 +20,69 @@ void Test_SkipListCorrectness() {
     for (size_t i = 0; i < 100; ++i) {
         // std::cout << i << std::endl;
         std::mt19937 gen(i);
-        std::vector<std::vector<uint8_t>> kvs(kvs_cnt);
-        std::vector<Param> params(kvs_cnt);
-        for (size_t j = 0; j < kvs.size(); ++j) {
+        std::vector<Key> keys(kvs_cnt);
+        std::vector<Value> vals(kvs_cnt);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
             bool ok;
             do {
-                params[j] = {(uint32_t)(gen() % max_key_size + 1), (uint32_t)(gen() % (max_value_size + 1))};
-                kvs[j].resize(params[j].key_size + params[j].value_size);
-                for (size_t k = 0; k < params[j].key_size + params[j].value_size; ++k) {
-                    kvs[j][k] = gen() % 256;
+                keys.emplace_back((uint32_t)(gen() % max_key_size + 1));
+                vals.emplace_back((uint32_t)(gen() % (max_value_size + 1)));
+                for (size_t k = 0; k < keys[j].size(); ++k) {
+                    keys[j][k] = gen() % 256;
+                }
+                for (size_t k = 0; k < vals[j].size(); ++k) {
+                    vals[j][k] = gen() % 256;
                 }
                 ok = true;
                 for (size_t k = 0; k < j && ok; ++k) {
-                    if (params[j].key_size != params[k].key_size) {
-                        continue;
-                    }
-                    ok = std::memcmp(kvs[j].data(), kvs[k].data(), params[j].key_size) != 0;
+                    ok = keys[k] == keys[j];
                 }
             } while (!ok);
         }
         SkipList list(10000, 10000, 6);
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            list.Insert(kvs[j].data(), params[j].key_size, params[j].value_size);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            list.Insert(keys[j], vals[j]);
         }
 
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = list.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            LookupResult res = list.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0) {
+                assert(res->empty());
             } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
+                assert(*res == vals[j]);
             }
         }
-        for (size_t j = kvs.size() - 1; ~j; --j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = list.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
+        for (size_t j = kvs_cnt - 1; ~j; --j) {
+            LookupResult res = list.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0) {
+                assert(res->empty());
             } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
-            }
-        }
-
-        for (size_t j = 0; j < kvs.size(); j += 2) {
-            list.Erase(kvs[j].data(), params[j].key_size);
-        }
-
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = list.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0 || j % 2 == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
-            } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
+                assert(*res == vals[j]);
             }
         }
 
-        std::vector<uint8_t> a(max_key_size + 1, 'a');
-        std::vector<uint8_t> b(max_key_size + 1, 'b');
-        std::vector<uint8_t> c(max_key_size + 1, 'c');
-        assert(list.Find(nullptr, a.data(), a.size()) == LookUpResult::ValueNotFound);
-        assert(list.Find(nullptr, b.data(), b.size()) == LookUpResult::ValueNotFound);
-        assert(list.Find(nullptr, c.data(), c.size()) == LookUpResult::ValueNotFound);
+        for (size_t j = 0; j < kvs_cnt; j += 2) {
+            list.Erase(keys[j]);
+        }
+
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            LookupResult res = list.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0 || j % 2 == 0) {
+                assert(res->empty());
+            } else {
+                assert(*res == vals[j]);
+            }
+        }
+
+        Key a(max_key_size + 1, 'a');
+        Key b(max_key_size + 1, 'b');
+        Key c(max_key_size + 1, 'c');
+        assert(!list.Find(a));
+        assert(!list.Find(b));
+        assert(!list.Find(c));
     }
 }
 
@@ -122,13 +117,7 @@ void Test_FilterCorrectness() {
 }
 
 void Test_MemtableCorrectness() {
-    using MyLSMTree::Memtable::Memtable;
-    using namespace MyLSMTree::Memtable;
-
-    struct Param {
-        uint32_t key_size;
-        uint32_t value_size;
-    };
+    using namespace MyLSMTree;
 
     size_t kvs_cnt = 100;
     size_t max_key_size = 2000;
@@ -136,73 +125,70 @@ void Test_MemtableCorrectness() {
 
     for (size_t i = 0; i < 100; ++i) {
         // std::cout << i << std::endl;
-        std::mt19937 gen(i + 100);
-        std::vector<std::vector<uint8_t>> kvs(kvs_cnt);
-        std::vector<Param> params(kvs_cnt);
-        for (size_t j = 0; j < kvs.size(); ++j) {
+        std::mt19937 gen(i);
+        std::vector<Key> keys(kvs_cnt);
+        std::vector<Value> vals(kvs_cnt);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
             bool ok;
             do {
-                params[j] = {(uint32_t)(gen() % max_key_size + 1), (uint32_t)(gen() % (max_value_size + 1))};
-                kvs[j].resize(params[j].key_size + params[j].value_size);
-                for (size_t k = 0; k < params[j].key_size + params[j].value_size; ++k) {
-                    kvs[j][k] = gen() % 256;
+                keys.emplace_back((uint32_t)(gen() % max_key_size + 1));
+                vals.emplace_back((uint32_t)(gen() % (max_value_size + 1)));
+                for (size_t k = 0; k < keys[j].size(); ++k) {
+                    keys[j][k] = gen() % 256;
+                }
+                for (size_t k = 0; k < vals[j].size(); ++k) {
+                    vals[j][k] = gen() % 256;
                 }
                 ok = true;
                 for (size_t k = 0; k < j && ok; ++k) {
-                    if (params[j].key_size != params[k].key_size) {
-                        continue;
-                    }
-                    ok = std::memcmp(kvs[j].data(), kvs[k].data(), params[j].key_size) != 0;
+                    ok = keys[k] == keys[j];
                 }
             } while (!ok);
         }
-        Memtable table(10000, 100000, 12, 10000, 6);
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            table.Insert(kvs[j].data(), params[j].key_size, params[j].value_size);
+        Memtable::Memtable table(10000, 100000, 12, 10000, 6);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            table.Insert(keys[j], vals[j]);
         }
 
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = table.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            LookupResult res = table.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0) {
+                assert(res->empty());
             } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
+                assert(*res == vals[j]);
             }
         }
-        for (size_t j = kvs.size() - 1; ~j; --j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = table.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
+        for (size_t j = kvs_cnt - 1; ~j; --j) {
+            LookupResult res = table.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0) {
+                assert(res->empty());
             } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
-            }
-        }
-
-        for (size_t j = 0; j < kvs.size(); j += 2) {
-            table.Erase(kvs[j].data(), params[j].key_size);
-        }
-
-        for (size_t j = 0; j < kvs.size(); ++j) {
-            std::vector<uint8_t> val(params[j].value_size, 0);
-            auto cmp = table.Find(val.data(), kvs[j].data(), params[j].key_size);
-            assert(cmp != LookUpResult::ValueNotFound);
-            if (params[j].value_size == 0 || j % 2 == 0) {
-                assert(cmp == LookUpResult::ValueDeleted);
-            } else {
-                assert(std::memcmp(val.data(), kvs[j].data() + params[j].key_size, params[j].value_size) == 0);
+                assert(*res == vals[j]);
             }
         }
 
-        std::vector<uint8_t> a(max_key_size + 1, 'a');
-        std::vector<uint8_t> b(max_key_size + 1, 'b');
-        std::vector<uint8_t> c(max_key_size + 1, 'c');
-        assert(table.Find(nullptr, a.data(), a.size()) == LookUpResult::ValueNotFound);
-        assert(table.Find(nullptr, b.data(), b.size()) == LookUpResult::ValueNotFound);
-        assert(table.Find(nullptr, c.data(), c.size()) == LookUpResult::ValueNotFound);
+        for (size_t j = 0; j < kvs_cnt; j += 2) {
+            table.Erase(keys[j]);
+        }
+
+        for (size_t j = 0; j < kvs_cnt; ++j) {
+            LookupResult res = table.Find(keys[j]);
+            assert(res);
+            if (vals[j].size() == 0 || j % 2 == 0) {
+                assert(res->empty());
+            } else {
+                assert(*res == vals[j]);
+            }
+        }
+
+        Key a(max_key_size + 1, 'a');
+        Key b(max_key_size + 1, 'b');
+        Key c(max_key_size + 1, 'c');
+        assert(!table.Find(a));
+        assert(!table.Find(b));
+        assert(!table.Find(c));
     }
 }
 

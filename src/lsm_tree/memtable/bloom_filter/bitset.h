@@ -8,7 +8,7 @@ namespace MyLSMTree::Memtable {
 
 class Bitset {
 public:
-    explicit Bitset(std::size_t bits_count);
+    explicit Bitset(size_t bits_count);
 
     bool Test(size_t i) const;
     void Set(size_t i);
@@ -16,8 +16,7 @@ public:
     void Clear();
 
     const uint64_t* Data() const;
-    size_t SizeInBytes() const;
-    size_t SizeInBits() const;
+    size_t Size() const;
 
 private:
     std::vector<uint64_t> data_;

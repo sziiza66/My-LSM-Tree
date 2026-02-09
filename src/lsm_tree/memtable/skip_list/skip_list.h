@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "kvbuffer.h"
-#include "../../common_types.h"
+#include "../../common.h"
 
 namespace MyLSMTree::Memtable {
 
@@ -29,20 +29,22 @@ class SkipList {
 public:
     SkipList(size_t kv_count_limit, uint32_t kv_buffer_slice_size, std::mt19937::result_type rng_seed = 6);
 
-    void Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size);
-    LookUpResult Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) const;
-    LookUpResult Find(const uint8_t* key, uint32_t key_size) const;
-    void Erase(const uint8_t* key, uint32_t key_size);
+    void Insert(const Key& key, const Value& value);
+    void Erase(const Key& key);
+    LookupResult Find(const Key& key) const;
+    RangeLookupResult FindRange(const KeyRange& range) const;
     void Clear();
     size_t Size() const;
-    void MakeIndexAndDataBlocksInFd(int fd) const;
-
-private:
-    uint8_t RandomLevel();
-    void WriteToNode(Node& node, const uint8_t* kv, uint32_t key_size, uint32_t value_size);
-
+    size_t GetDataSizeInBytes() const;
     void MakeIndexBlockInFd(int fd) const;
     void MakeDataBlockInFd(int fd) const;
+
+private:
+    uint32_t FindNode(const Key& key) const;
+    int Compare(uint32_t node_index, const Key& key) const;
+
+    uint8_t RandomLevel();
+    void WriteToNode(Node& node, const Key& key, const Value& value);
 
 private:
     std::vector<Node> nodes_;

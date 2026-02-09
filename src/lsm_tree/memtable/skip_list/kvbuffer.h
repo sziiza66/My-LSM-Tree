@@ -14,6 +14,7 @@ class KVBuffer {
 
 public:
     explicit KVBuffer(uint32_t slice_size);
+    KVBuffer(const KVBuffer&) = delete;
     ~KVBuffer() noexcept;
 
     void Append(const uint8_t* data, uint32_t size);

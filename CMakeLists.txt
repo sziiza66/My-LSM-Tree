@@ -7,26 +7,22 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_BUILD_TYPE Debug)
 
-if (MSVC)
-    # warning level 4
-    add_compile_options(/W4)
-    set(CMAKE_CXX_FLAGS_DEBUG "/Od")
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2")
+# additional warnings
+add_compile_options(-Wall -Wextra -Wpedantic)
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
+    # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -fomit-frame-pointer -fno-semantic-interposition -ftree-vectorize -flto -unroll-loops -mavx2 -mbmi -mbmi2 -mpopcnt -mlzcnt -mfma -mabm -DNDEBUG")
 else()
-    # additional warnings
-    add_compile_options(-Wall -Wextra -Wpedantic)
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-    if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
-        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
-        # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -fomit-frame-pointer -fno-semantic-interposition -ftree-vectorize -flto -unroll-loops -mavx2 -mbmi -mbmi2 -mpopcnt -mlzcnt -mfma -mabm -DNDEBUG")
-    else()
-        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
-    endif()
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
 endif()
+
 message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 
 SET(SOURCES
     src/main.cpp
+    src/lsm_tree/common.cpp
+    src/lsm_tree/sstable/sstable_reader.cpp
     src/lsm_tree/memtable/memtable.cpp
     src/lsm_tree/memtable/skip_list/skip_list.cpp
     src/lsm_tree/memtable/skip_list/kvbuffer.cpp

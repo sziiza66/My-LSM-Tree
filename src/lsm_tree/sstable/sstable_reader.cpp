@@ -1,0 +1,102 @@
+#include <cassert>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "sstable_reader.h"
+
+namespace MyLSMTree::SSTable {
+
+SSTableReadersManager::SSTableReader::SSTableReader(SSTableReadersManager* manager, const Path& path, int fd)
+    : manager_(manager), path_(path), fd_(fd) {
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        perror("fstat failed");
+        return;
+    }
+    pread(fd_, &meta_, sizeof(meta_), st.st_size - sizeof(meta_));
+}
+
+SSTableReadersManager::SSTableReader::~SSTableReader() {
+    manager_->DecreaseFdCounter(path_);
+}
+
+size_t SSTableReadersManager::SSTableReader::GetKVCount() const {
+    return meta_.kv_count;
+}
+
+Index SSTableReadersManager::SSTableReader::GetIthIndex(size_t i) const {
+    Index index;
+    pread(fd_, &index, sizeof(index), GetIthIndexOffset(i));
+    return index;
+}
+
+bool SSTableReadersManager::SSTableReader::GetFilterIthBit(size_t i) const {
+    size_t batch_offset = GetFilterBatchOffsetWithIthBit(i);
+    uint64_t batch;
+    pread(fd_, &batch, sizeof(batch), batch_offset);
+    return batch & (1ULL << (i & 63));
+}
+
+Key SSTableReadersManager::SSTableReader::GetIthKey(size_t i) const {
+    Index index = GetIthIndex(i);
+    Key key(index.key_size);
+    pread(fd_, key.data(), key.size(), index.offset);
+    return key;
+}
+
+Value SSTableReadersManager::SSTableReader::GetIthValue(size_t i) const {
+    Index index = GetIthIndex(i);
+    Value value(index.value_size);
+    pread(fd_, value.data(), value.size(), index.offset +  index.key_size);
+    return value;
+}
+
+size_t SSTableReadersManager::SSTableReader::GetIthIndexOffset(size_t i) const {
+    return meta_.index_offset + i * sizeof(Index);
+}
+
+size_t SSTableReadersManager::SSTableReader::GetFilterBatchOffsetWithIthBit(size_t i) const {
+    return meta_.filter_offset + (i / 64) * 8;
+}
+
+SSTableReadersManager::SSTableReadersManager(size_t cahce_size) : cache_size_(cahce_size) {
+}
+
+SSTableReadersManager::SSTableReader SSTableReadersManager::CreateReader(const Path& path) {
+    auto normal_path = path.lexically_normal();
+    if (auto it = fd_mapping_.find(normal_path); it != fd_mapping_.end()) {
+        ++it->second.count;
+        return SSTableReader(this, normal_path, it->second.fd);
+    }
+    int fd = open(normal_path.c_str(), O_RDONLY | O_CLOEXEC);
+    fd_mapping_[normal_path] = {1, fd};
+    return SSTableReader(this, normal_path, fd);
+}
+
+void SSTableReadersManager::DecreaseFdCounter(const Path& normal_path) {
+    auto it = fd_mapping_.find(normal_path);
+    assert(it != fd_mapping_.end());
+    --it->second.count;
+    if (!it->second.count) {
+        cache_queue_.push(normal_path);
+        TryClearingCache();
+    }
+}
+
+void SSTableReadersManager::TryClearingCache() {
+    while (cache_queue_.size() > cache_size_) {
+        Path normal_path = std::move(cache_queue_.front());
+        cache_queue_.pop();
+        auto it = fd_mapping_.find(normal_path);
+        if (it == fd_mapping_.end()) {
+            continue;
+        }
+        if (!it->second.count) {
+            close(it->second.fd);
+            fd_mapping_.erase(it);
+        }
+    }
+}
+
+}  // namespace MyLSMTree::SSTable

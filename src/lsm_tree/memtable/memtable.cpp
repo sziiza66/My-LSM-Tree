@@ -2,33 +2,35 @@
 
 namespace MyLSMTree::Memtable {
 
-Memtable::Memtable(size_t kv_count_limit, size_t filter_bits_count, size_t filter_hash_func_count,
+Memtable::Memtable(size_t filter_bits_count, size_t filter_hash_func_count, size_t kv_count_limit,
                    uint32_t kv_buffer_slice_size, std::mt19937::result_type list_rng_seed)
     : filter_(filter_bits_count, filter_hash_func_count), list_(kv_count_limit, kv_buffer_slice_size, list_rng_seed) {
 }
 
-void Memtable::Insert(const uint8_t* kv, uint32_t key_size, uint32_t value_size) {
-    filter_.Insert(kv, key_size);
-    list_.Insert(kv, key_size, value_size);
+Memtable::Memtable(BloomFilter filter, size_t kv_count_limit, uint32_t kv_buffer_slice_size,
+                   std::mt19937::result_type list_rng_seed)
+    : filter_(std::move(filter)), list_(kv_count_limit, kv_buffer_slice_size, list_rng_seed) {
 }
 
-LookUpResult Memtable::Find(uint8_t* value_dest, const uint8_t* key, uint32_t key_size) const {
-    if (!filter_.Find(key, key_size)) {
-        return LookUpResult::ValueNotFound;
+void Memtable::Insert(const Key& key, const Value& value) {
+    filter_.Insert(key.data(), key.size());
+    list_.Insert(key, value);
+}
+
+LookupResult Memtable::Find(const Key& key) const {
+    if (!filter_.Find(key.data(), key.size())) {
+        return std::nullopt;
     }
-    return list_.Find(value_dest, key, key_size);
+    return list_.Find(key);
 }
 
-LookUpResult Memtable::Find(const uint8_t* key, uint32_t key_size) const {
-    if (!filter_.Find(key, key_size)) {
-        return LookUpResult::ValueNotFound;
-    }
-    return list_.Find(key, key_size);
+RangeLookupResult Memtable::FindRange(const KeyRange& range) const {
+    return list_.FindRange(range);
 }
 
-void Memtable::Erase(const uint8_t* key, uint32_t key_size) {
-    filter_.Insert(key, key_size);
-    list_.Erase(key, key_size);
+void Memtable::Erase(const Key& key) {
+    filter_.Insert(key.data(), key.size());
+    list_.Erase(key);
 }
 
 void Memtable::Clear() {
@@ -36,13 +38,20 @@ void Memtable::Clear() {
     list_.Clear();
 }
 
-size_t Memtable::Size() const {
+size_t Memtable::GetKVCount() const {
     return list_.Size();
 }
 
 void Memtable::MakeSSTableInFd(int fd) const {
+    list_.MakeDataBlockInFd(fd);
     filter_.MakeFilterBlockInFd(fd);
-    list_.MakeIndexAndDataBlocksInFd(fd);
+    list_.MakeIndexBlockInFd(fd);
+
+    MetaBlock meta{.filter_offset = list_.GetDataSizeInBytes(),
+                   .filter_bits_count = filter_.BitsCount(),
+                   .index_offset = list_.GetDataSizeInBytes() + filter_.GetSizeInBytes(),
+                   .kv_count = list_.Size()};
+    write(fd, &meta, sizeof(meta));
 }
 
 }  // namespace MyLSMTree::Memtable

@@ -26,12 +26,8 @@ const uint64_t* Bitset::Data() const {
     return data_.data();
 }
 
-size_t Bitset::SizeInBytes() const {
+size_t Bitset::Size() const {
     return data_.size() * 8;
-}
-
-size_t Bitset::SizeInBits() const {
-    return data_.size() * sizeof(uint64_t) * 8;
 }
 
 }  // namespace MyLSMTree::Memtable
