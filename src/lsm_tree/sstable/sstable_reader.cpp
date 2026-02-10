@@ -107,12 +107,12 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReadersManager::SSTableReader
             } else if (range.lower > buffer) {
                 l = m;
             } else {
-                l = range.including_lower ? m : m + 1;
+                l = range.including_lower ? m - 1 : m;
                 break;
             }
         }
     }
-
+    ++l;
     for (; l < meta_.kv_count; ++l) {
         auto key_token = GetIthKeyToken(l);
         auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
