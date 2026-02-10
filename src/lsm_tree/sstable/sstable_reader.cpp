@@ -53,10 +53,10 @@ bool SSTableReadersManager::SSTableReader::TestHashes(uint64_t low_hash, uint64_
     return true;
 }
 
-Offset SSTableReadersManager::SSTableReader::GetIthOffset(size_t i) const {
+KeyAccessToken SSTableReadersManager::SSTableReader::GetIthKeyToken(size_t i) const {
     Offset offset;
     pread(fd_, &offset, sizeof(offset), GetIthOffsetOffset(i));
-    return offset;
+    return {offset};
 }
 
 // Key SSTableReadersManager::SSTableReader::GetIthKey(size_t i) const {
@@ -78,15 +78,15 @@ std::pair<LookupResult, Key> SSTableReadersManager::SSTableReader::Find(const Ke
     size_t r = meta_.kv_count + 1;
     while (l + 1 != r) {
         size_t m = (l + r) >> 1;
-        Offset offset = GetIthOffset(m - 1);
-        auto [buffer_ret, value_offset] = GetKeyFromOffset(offset, std::move(buffer));
+        auto key_token = GetIthKeyToken(m - 1);
+        auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
         buffer = std::move(buffer_ret);
         if (key < buffer) {
             r = m;
         } else if (key > buffer) {
             l = m;
         } else {
-            return {GetValueFromOffset(value_offset), std::move(buffer)};
+            return {GetValueFromToken(value_token), std::move(buffer)};
         }
     }
     return {std::nullopt, std::move(buffer)};
@@ -99,9 +99,9 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReadersManager::SSTableReader
     if (range.lower) {
         while (l + 1 < r) {
             size_t m = (l + r) >> 1;
-        Offset offset = GetIthOffset(m - 1);
-        auto [buffer_ret, value_offset] = GetKeyFromOffset(offset, std::move(buffer));
-        buffer = std::move(buffer_ret);
+            auto key_token = GetIthKeyToken(m);
+            auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
+            buffer = std::move(buffer_ret);
             if (range.lower < buffer) {
                 r = m;
             } else if (range.lower > buffer) {
@@ -114,8 +114,8 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReadersManager::SSTableReader
     }
 
     for (; l < meta_.kv_count; ++l) {
-        Offset offset = GetIthOffset(l);
-        auto [buffer_ret, value_offset] = GetKeyFromOffset(offset, std::move(buffer));
+        auto key_token = GetIthKeyToken(l);
+        auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
         buffer = std::move(buffer_ret);
         if (range.upper && (range.including_upper ? buffer > range.upper : buffer >= range.upper)) {
             break;
@@ -124,12 +124,10 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReadersManager::SSTableReader
             incomplete.deleted.find(buffer) != incomplete.deleted.end()) {
             continue;
         }
-        size_t value_size;
-        pread(fd_, &value_size, sizeof(value_size), value_offset);
-        if (!value_size) {
+        Value value = GetValueFromToken(value_token);
+        if (!value.empty()) {
             incomplete.deleted.insert(std::move(buffer));
         } else {
-            Value value = GetValueFromOffset(value_offset);
             incomplete.accumutaled[std::move(buffer)] = std::move(value);
         }
     }
@@ -137,19 +135,17 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReadersManager::SSTableReader
     return {std::move(incomplete), std::move(buffer)};
 }
 
-KeyWithValueOffset SSTableReadersManager::SSTableReader::GetKeyFromOffset(Offset offset, Key buffer) const {
-    size_t key_size;
-    pread(fd_, &key_size, sizeof(key_size), offset);
-    buffer.resize(key_size);
-    pread(fd_, buffer.data(), buffer.size(), offset + sizeof(key_size));
-    return {std::move(buffer), offset + sizeof(key_size) + key_size};
+KeyWithValueToken SSTableReadersManager::SSTableReader::GetKeyFromToken(KeyAccessToken token, Key buffer) const {
+    KVSizes sizes;
+    pread(fd_, &sizes, sizeof(sizes), token.kv_offset);
+    buffer.resize(sizes.key_size);
+    pread(fd_, buffer.data(), buffer.size(), token.kv_offset + sizeof(sizes));
+    return {std::move(buffer), {token.kv_offset + sizeof(sizes) + sizes.key_size, sizes.value_size}};
 }
 
-Value SSTableReadersManager::SSTableReader::GetValueFromOffset(Offset offset) const {
-    size_t value_size;
-    pread(fd_, &value_size, sizeof(value_size), offset);
-    Value value(value_size);
-    pread(fd_, value.data(), value.size(), offset + value_size);
+Value SSTableReadersManager::SSTableReader::GetValueFromToken(ValueAccessToken token) const {
+    Value value(token.value_size);
+    pread(fd_, value.data(), value.size(), token.value_offset);
     return value;
 }
 

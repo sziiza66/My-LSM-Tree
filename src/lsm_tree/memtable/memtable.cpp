@@ -1,4 +1,5 @@
 #include "memtable.h"
+#include "skip_list/kvbuffer.h"
 
 namespace MyLSMTree::Memtable {
 
@@ -47,7 +48,7 @@ void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
     filter_.MakeFilterBlockInFd(fd);
     list_.MakeIndexBlockInFd(fd, skip_deleted);
 
-    Offset filter_offset = true_data_size_in_bytes + true_kv_count * 2 * sizeof(Offset);
+    Offset filter_offset = true_data_size_in_bytes + true_kv_count * sizeof(KVSizes);
     MetaBlock meta{.filter_offset = filter_offset,
                    .filter_bits_count = filter_.BitsCount(),
                    .filter_hash_func_count = filter_.HashFuncCount(),

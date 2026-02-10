@@ -13,6 +13,15 @@ namespace MyLSMTree {
 
 using Offset = size_t;
 
+struct KeyAccessToken {
+    const Offset kv_offset;
+};
+
+struct ValueAccessToken {
+    const Offset value_offset;
+    const size_t value_size;
+};
+
 struct Index {
     size_t offset;
     uint32_t key_size;
@@ -34,6 +43,16 @@ using Values = std::vector<Value>;
 using RangeLookupResult = std::map<Key, Value>;
 using LookupResult = std::optional<std::vector<uint8_t>>;
 using Path = std::filesystem::path;
+
+struct KeyWithValueToken {
+    Key key;
+    ValueAccessToken token;
+};
+
+struct KVSizes {
+    size_t key_size;
+    size_t value_size;
+};
 
 struct KeyRange {
     std::optional<Key> lower;

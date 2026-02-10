@@ -7,11 +7,6 @@
 
 namespace MyLSMTree::SSTable {
 
-struct KeyWithValueOffset {
-    Key key;
-    Offset value_offset;
-};
-
 class SSTableReadersManager {
     struct FdCounter {
         uint32_t count;
@@ -30,7 +25,7 @@ public:
         bool GetFilterIthBit(size_t i) const;
         bool TestHash(uint64_t hash) const;
         bool TestHashes(uint64_t low_hash, uint64_t high_hash) const;
-        Offset GetIthOffset(size_t i) const;
+        KeyAccessToken GetIthKeyToken(size_t i) const;
         //Key GetIthKey(size_t i) const;
         //Value GetIthValue(size_t i) const;
         std::pair<LookupResult, Key> Find(const Key& key, Key buffer = {}) const;
@@ -41,8 +36,8 @@ public:
         SSTableReader(SSTableReadersManager& manager, const Path& path, int fd);
 
     private:
-        KeyWithValueOffset GetKeyFromOffset(Offset offset, Key buffer = {}) const;
-        Value GetValueFromOffset(Offset offset) const;
+        KeyWithValueToken GetKeyFromToken(KeyAccessToken token, Key buffer = {}) const;
+        Value GetValueFromToken(ValueAccessToken token) const;
         Offset GetIthOffsetOffset(size_t i) const;
         size_t GetFilterBatchOffsetWithIthBit(size_t i) const;
 
