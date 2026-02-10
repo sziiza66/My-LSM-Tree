@@ -102,8 +102,8 @@ LookupResult SkipList::Find(const Key& key) const {
     return std::nullopt;
 }
 
-RangeLookupResult SkipList::FindRange(const KeyRange& range) const {
-    RangeLookupResult result{};
+IncompleteRangeLookupResult SkipList::FindRange(const KeyRange& range) const {
+    IncompleteRangeLookupResult result{};
     uint32_t cur_node = range.lower ? FindNode(*range.lower) : nodes_[0].next[0];
     if (!range.including_lower && cur_node != kNil && range.lower) {
         cur_node = nodes_[cur_node].next[0];
@@ -112,10 +112,14 @@ RangeLookupResult SkipList::FindRange(const KeyRange& range) const {
          cur_node = nodes_[cur_node].next[0]) {
         const Node& node = nodes_[cur_node];
         Key key(node.key_size);
-        Value value(node.value_size);
         kvbuffer_.Write(key.data(), node.key_offset, key.size());
-        kvbuffer_.Write(value.data(), node.key_offset + node.key_size, value.size());
-        result[std::move(key)] = std::move(value);
+        if (!node.value_size) {
+            result.deleted.insert(std::move(key));
+        } else {
+            Value value(node.value_size);
+            kvbuffer_.Write(value.data(), node.key_offset + node.key_size, value.size());
+            result.accumutaled[std::move(key)] = std::move(value);
+        }
     }
     return result;
 }
@@ -135,23 +139,34 @@ size_t SkipList::GetDataSizeInBytes() const {
     return kvbuffer_.GetTotalKVSizeInBytes();
 }
 
-void SkipList::MakeIndexBlockInFd(int fd) const {
-    size_t total_offset = static_cast<size_t>(kv_count_) * sizeof(Index);
-    for (size_t cur_node = nodes_[0].next[0], i = 0; cur_node != kNil; cur_node = nodes_[cur_node].next[0], ++i) {
+void SkipList::MakeIndexBlockInFd(int fd, bool skip_deleted) const {
+    for (size_t cur_node = nodes_[0].next[0], i = 0, total_offset = 0; cur_node != kNil;
+         cur_node = nodes_[cur_node].next[0], ++i) {
         const Node& node = nodes_[cur_node];
-        index_block_buffer_[i].offset = total_offset;
-        index_block_buffer_[i].key_size = node.key_size;
-        index_block_buffer_[i].value_size = node.value_size;
-        total_offset += node.key_size + node.value_size;
+        if (node.value_size || !skip_deleted) {
+            index_block_buffer_.emplace_back(total_offset);
+            total_offset += node.key_size + node.value_size + 2 * sizeof(index_block_buffer_[0]);
+        }
     }
-    write(fd, index_block_buffer_.data(), static_cast<size_t>(kv_count_) * sizeof(Index));
+    write(fd, index_block_buffer_.data(), index_block_buffer_.size() * sizeof(index_block_buffer_[0]));
 }
 
-void SkipList::MakeDataBlockInFd(int fd) const {
+std::pair<size_t, size_t> SkipList::MakeDataBlockInFd(int fd, bool skip_deleted) const {
+    size_t true_kv_count = 0;
+    size_t true_data_size_in_bytes = 0;
     for (auto cur_node = nodes_[0].next[0]; cur_node != kNil; cur_node = nodes_[cur_node].next[0]) {
         const Node& node = nodes_[cur_node];
-        kvbuffer_.WriteToFd(fd, node.key_offset, node.key_offset + node.value_size);
+        if (node.value_size || !skip_deleted) {
+            write(fd, &node.key_size, sizeof(node.key_size));
+            kvbuffer_.WriteToFd(fd, node.key_offset, node.key_size);
+            write(fd, &node.value_size, sizeof(node.value_size));
+            kvbuffer_.WriteToFd(fd, node.key_offset + node.key_size, node.value_size);
+
+            ++true_kv_count;
+            true_data_size_in_bytes += node.key_size + node.value_size;
+        }
     }
+    return {true_kv_count, true_data_size_in_bytes};
 }
 
 uint32_t SkipList::FindNode(const Key& key) const {

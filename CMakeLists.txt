@@ -22,6 +22,7 @@ message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 SET(SOURCES
     src/main.cpp
     src/lsm_tree/common.cpp
+    src/lsm_tree/lsm_tree.cpp
     src/lsm_tree/sstable/sstable_reader.cpp
     src/lsm_tree/memtable/memtable.cpp
     src/lsm_tree/memtable/skip_list/skip_list.cpp

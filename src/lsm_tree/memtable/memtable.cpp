@@ -18,13 +18,13 @@ void Memtable::Insert(const Key& key, const Value& value) {
 }
 
 LookupResult Memtable::Find(const Key& key) const {
-    if (!filter_.Find(key.data(), key.size())) {
-        return std::nullopt;
-    }
+    // if (!filter_.Find(key.data(), key.size())) {
+    //     return std::nullopt;
+    // }
     return list_.Find(key);
 }
 
-RangeLookupResult Memtable::FindRange(const KeyRange& range) const {
+IncompleteRangeLookupResult Memtable::FindRange(const KeyRange& range) const {
     return list_.FindRange(range);
 }
 
@@ -42,15 +42,17 @@ size_t Memtable::GetKVCount() const {
     return list_.Size();
 }
 
-void Memtable::MakeSSTableInFd(int fd) const {
-    list_.MakeDataBlockInFd(fd);
+void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
+    auto [true_kv_count, true_data_size_in_bytes] = list_.MakeDataBlockInFd(fd, skip_deleted);
     filter_.MakeFilterBlockInFd(fd);
-    list_.MakeIndexBlockInFd(fd);
+    list_.MakeIndexBlockInFd(fd, skip_deleted);
 
-    MetaBlock meta{.filter_offset = list_.GetDataSizeInBytes(),
+    Offset filter_offset = true_data_size_in_bytes + true_kv_count * 2 * sizeof(Offset);
+    MetaBlock meta{.filter_offset = filter_offset,
                    .filter_bits_count = filter_.BitsCount(),
-                   .index_offset = list_.GetDataSizeInBytes() + filter_.GetSizeInBytes(),
-                   .kv_count = list_.Size()};
+                   .filter_hash_func_count = filter_.HashFuncCount(),
+                   .index_offset = filter_offset + filter_.GetSizeInBytes(),
+                   .kv_count = true_kv_count};
     write(fd, &meta, sizeof(meta));
 }
 

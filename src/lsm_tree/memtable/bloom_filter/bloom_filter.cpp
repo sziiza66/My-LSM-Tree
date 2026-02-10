@@ -38,6 +38,11 @@ size_t BloomFilter::BitsCount() const {
     return bits_count_;
 }
 
+size_t BloomFilter::HashFuncCount() const {
+    return hash_func_count_;   
+}
+
+
 size_t BloomFilter::GetSizeInBytes() const {
     return filter_.Size();
 }

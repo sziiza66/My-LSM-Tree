@@ -18,7 +18,7 @@ void Test_SkipListCorrectness() {
     size_t max_value_size = 10000;
 
     for (size_t i = 0; i < 100; ++i) {
-        // std::cout << i << std::endl;
+        //  std::cout << i << std::endl;
         std::mt19937 gen(i);
         std::vector<Key> keys(kvs_cnt);
         std::vector<Value> vals(kvs_cnt);
@@ -145,7 +145,7 @@ void Test_MemtableCorrectness() {
                 }
             } while (!ok);
         }
-        Memtable::Memtable table(10000, 100000, 12, 10000, 6);
+        Memtable::Memtable table(10000, 10, 100000, 10000, 6);
         for (size_t j = 0; j < kvs_cnt; ++j) {
             table.Insert(keys[j], vals[j]);
         }

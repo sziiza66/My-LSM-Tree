@@ -13,6 +13,7 @@ public:
     void MakeFilterBlockInFd(int fd) const;
     void Clear();
     size_t BitsCount() const;
+    size_t HashFuncCount() const;
     size_t GetSizeInBytes() const;
 
 private:

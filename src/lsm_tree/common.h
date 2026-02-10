@@ -4,10 +4,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace MyLSMTree {
+
+using Offset = size_t;
 
 struct Index {
     size_t offset;
@@ -16,13 +20,15 @@ struct Index {
 };
 
 struct MetaBlock {
-    size_t filter_offset;
+    Offset filter_offset;
     size_t filter_bits_count;
-    size_t index_offset;
+    size_t filter_hash_func_count;
+    Offset index_offset;
     size_t kv_count;
 };
 
 using Key = std::vector<uint8_t>;
+using KeyPtr = std::unique_ptr<Key>;
 using Value = std::vector<uint8_t>;
 using Values = std::vector<Value>;
 using RangeLookupResult = std::map<Key, Value>;
@@ -34,6 +40,11 @@ struct KeyRange {
     std::optional<Key> upper;
     bool including_lower;
     bool including_upper;
+};
+
+struct IncompleteRangeLookupResult {
+    RangeLookupResult accumutaled;
+    std::set<Key> deleted;
 };
 
 std::pair<uint64_t, uint64_t> CalculateHash(const uint8_t* data, size_t size);

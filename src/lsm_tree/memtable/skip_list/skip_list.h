@@ -32,12 +32,12 @@ public:
     void Insert(const Key& key, const Value& value);
     void Erase(const Key& key);
     LookupResult Find(const Key& key) const;
-    RangeLookupResult FindRange(const KeyRange& range) const;
+    IncompleteRangeLookupResult FindRange(const KeyRange& range) const;
     void Clear();
     size_t Size() const;
     size_t GetDataSizeInBytes() const;
-    void MakeIndexBlockInFd(int fd) const;
-    void MakeDataBlockInFd(int fd) const;
+    void MakeIndexBlockInFd(int fd, bool skip_deleted) const;
+    std::pair<size_t, size_t> MakeDataBlockInFd(int fd, bool skip_deleted) const;
 
 private:
     uint32_t FindNode(const Key& key) const;
@@ -48,7 +48,7 @@ private:
 
 private:
     std::vector<Node> nodes_;
-    mutable std::vector<Index> index_block_buffer_;
+    mutable std::vector<Offset> index_block_buffer_;
     std::mt19937 rng_gen_;
     KVBuffer kvbuffer_;
     size_t level_count_limit_;

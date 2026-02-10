@@ -16,12 +16,12 @@ public:
 
     void Insert(const Key& key, const Value& value);
     LookupResult Find(const Key& key) const;
-    RangeLookupResult FindRange(const KeyRange& range) const;
+    IncompleteRangeLookupResult FindRange(const KeyRange& range) const;
 
     void Erase(const Key& key);
     void Clear();
     size_t GetKVCount() const;
-    void MakeSSTableInFd(int fd) const;
+    void MakeSSTableInFd(int fd, bool skip_deleted) const;
 
 private:
     BloomFilter filter_;

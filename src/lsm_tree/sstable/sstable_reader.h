@@ -1,10 +1,16 @@
 #pragma once
 
+#include <memory>
 #include <queue>
 
 #include "../common.h"
 
 namespace MyLSMTree::SSTable {
+
+struct KeyWithValueOffset {
+    Key key;
+    Offset value_offset;
+};
 
 class SSTableReadersManager {
     struct FdCounter {
@@ -12,20 +18,32 @@ class SSTableReadersManager {
         int fd;
     };
 
+public:
     class SSTableReader {
+        friend class SSTableReadersManager;
     public:
-        SSTableReader(SSTableReadersManager* manager, const Path& path, int fd);
         SSTableReader(const SSTableReader&) = delete;
+        SSTableReader(SSTableReader&&);
         ~SSTableReader();
 
         size_t GetKVCount() const;
-        Index GetIthIndex(size_t i) const;
         bool GetFilterIthBit(size_t i) const;
-        Key GetIthKey(size_t i) const;
-        Value GetIthValue(size_t i) const;
+        bool TestHash(uint64_t hash) const;
+        bool TestHashes(uint64_t low_hash, uint64_t high_hash) const;
+        Offset GetIthOffset(size_t i) const;
+        //Key GetIthKey(size_t i) const;
+        //Value GetIthValue(size_t i) const;
+        std::pair<LookupResult, Key> Find(const Key& key, Key buffer = {}) const;
+        std::pair<IncompleteRangeLookupResult, Key> FindRange(const KeyRange& range,
+                                                              IncompleteRangeLookupResult incomplete = {},
+                                                              Key buffer = {}) const;
+    private:
+        SSTableReader(SSTableReadersManager& manager, const Path& path, int fd);
 
     private:
-        size_t GetIthIndexOffset(size_t i) const;
+        KeyWithValueOffset GetKeyFromOffset(Offset offset, Key buffer = {}) const;
+        Value GetValueFromOffset(Offset offset) const;
+        Offset GetIthOffsetOffset(size_t i) const;
         size_t GetFilterBatchOffsetWithIthBit(size_t i) const;
 
     private:
