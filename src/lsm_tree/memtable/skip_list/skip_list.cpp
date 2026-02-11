@@ -86,7 +86,7 @@ LookupResult SkipList::Find(const Key& key) const {
             int cmp = Compare(next_node, key);
             if (cmp == 0) {
                 const auto& node = nodes_[next_node];
-                LookupResult value(LookupResult::value_type(0));
+                LookupResult value = std::make_optional<Value>(0);
                 if (node.value_size == 0) {
                     return value;
                 }
@@ -104,11 +104,11 @@ LookupResult SkipList::Find(const Key& key) const {
 
 IncompleteRangeLookupResult SkipList::FindRange(const KeyRange& range) const {
     IncompleteRangeLookupResult result{};
-    uint32_t cur_node = range.lower ? FindNode(*range.lower) : nodes_[0].next[0];
-    if (!range.including_lower && cur_node != kNil && range.lower) {
-        cur_node = nodes_[cur_node].next[0];
+    if (!kv_count_) {
+        return result;
     }
-    for (; cur_node != kNil && (!range.upper || Compare(cur_node, *range.upper) < (range.including_upper ? 1 : 0));
+    uint32_t cur_node = range.lower.has_value() ? FindNode(*range.lower, range.including_lower) : nodes_[0].next[0];
+    for (; cur_node != kNil && (!range.upper.has_value() || Compare(cur_node, *range.upper) > (range.including_upper ? -1 : 0));
          cur_node = nodes_[cur_node].next[0]) {
         const Node& node = nodes_[cur_node];
         Key key(node.key_size);
@@ -139,7 +139,12 @@ size_t SkipList::GetDataSizeInBytes() const {
     return kvbuffer_.GetTotalKVSizeInBytes();
 }
 
+size_t SkipList::GetKVBufferSliceSize() const {
+    return kvbuffer_.GetKVBufferSliceSize();
+}
+
 void SkipList::MakeIndexBlockInFd(int fd, bool skip_deleted) const {
+    index_block_buffer_.clear();
     for (size_t cur_node = nodes_[0].next[0], i = 0, total_offset = 0; cur_node != kNil;
          cur_node = nodes_[cur_node].next[0], ++i) {
         const Node& node = nodes_[cur_node];
@@ -148,7 +153,7 @@ void SkipList::MakeIndexBlockInFd(int fd, bool skip_deleted) const {
             total_offset += node.key_size + node.value_size + sizeof(KVSizes);
         }
     }
-    write(fd, index_block_buffer_.data(), index_block_buffer_.size() * sizeof(&index_block_buffer_[0]));
+    write(fd, index_block_buffer_.data(), index_block_buffer_.size() * sizeof(index_block_buffer_[0]));
 }
 
 std::pair<size_t, size_t> SkipList::MakeDataBlockInFd(int fd, bool skip_deleted) const {
@@ -167,7 +172,7 @@ std::pair<size_t, size_t> SkipList::MakeDataBlockInFd(int fd, bool skip_deleted)
     return {true_kv_count, true_data_size_in_bytes};
 }
 
-uint32_t SkipList::FindNode(const Key& key) const {
+uint32_t SkipList::FindNode(const Key& key, bool including) const {
     if (!kv_count_) {
         return 0;
     }
@@ -177,7 +182,7 @@ uint32_t SkipList::FindNode(const Key& key) const {
             size_t next_node = nodes_[cur_node].next[cur_level];
             int cmp = Compare(next_node, key);
             if (cmp == 0) {
-                return next_node;
+                return including ? next_node : nodes_[next_node].next[0];
             } else if (cmp < 0) {
                 break;
             }

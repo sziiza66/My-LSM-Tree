@@ -19,6 +19,7 @@ public:
 
     void Append(const uint8_t* data, uint32_t size);
     size_t GetTotalKVSizeInBytes() const;
+    size_t GetKVBufferSliceSize() const;
     int Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) const;
     void Write(uint8_t* dest, size_t offset, uint32_t size) const;
     void WriteToFd(int fd, size_t offset, uint32_t size) const;

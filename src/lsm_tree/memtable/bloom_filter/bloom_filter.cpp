@@ -11,6 +11,10 @@ BloomFilter::BloomFilter(size_t bits_count, size_t hash_func_count)
     : filter_(bits_count), hash_func_count_(hash_func_count), bits_count_(bits_count) {
 }
 
+BloomFilter::BloomFilter(Bitset filter, size_t bits_count, size_t hash_func_count)
+    : filter_(std::move(filter)), hash_func_count_(hash_func_count), bits_count_(bits_count) {
+}
+
 void BloomFilter::Insert(const uint8_t* data, size_t size) {
     for (size_t i = 0; i < hash_func_count_; ++i) {
         filter_.Set(CalculateIthHash(data, size, i, bits_count_));
@@ -27,7 +31,7 @@ bool BloomFilter::Find(const uint8_t* data, size_t size) const {
 }
 
 void BloomFilter::MakeFilterBlockInFd(int fd) const {
-    write(fd, filter_.Data(), filter_.Size());
+    write(fd, filter_.Data(), filter_.GetSizeInBytes());
 }
 
 void BloomFilter::Clear() {
@@ -39,12 +43,11 @@ size_t BloomFilter::BitsCount() const {
 }
 
 size_t BloomFilter::HashFuncCount() const {
-    return hash_func_count_;   
+    return hash_func_count_;
 }
 
-
 size_t BloomFilter::GetSizeInBytes() const {
-    return filter_.Size();
+    return filter_.GetSizeInBytes();
 }
 
 }  // namespace MyLSMTree::Memtable

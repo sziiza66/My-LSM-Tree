@@ -13,21 +13,6 @@ namespace MyLSMTree {
 
 using Offset = size_t;
 
-struct KeyAccessToken {
-    const Offset kv_offset;
-};
-
-struct ValueAccessToken {
-    const Offset value_offset;
-    const size_t value_size;
-};
-
-struct Index {
-    size_t offset;
-    uint32_t key_size;
-    uint32_t value_size;
-};
-
 struct MetaBlock {
     Offset filter_offset;
     size_t filter_bits_count;
@@ -41,17 +26,12 @@ using KeyPtr = std::unique_ptr<Key>;
 using Value = std::vector<uint8_t>;
 using Values = std::vector<Value>;
 using RangeLookupResult = std::map<Key, Value>;
-using LookupResult = std::optional<std::vector<uint8_t>>;
+using LookupResult = std::optional<Value>;
 using Path = std::filesystem::path;
 
-struct KeyWithValueToken {
-    Key key;
-    ValueAccessToken token;
-};
-
 struct KVSizes {
-    size_t key_size;
-    size_t value_size;
+    uint32_t key_size;
+    uint32_t value_size;
 };
 
 struct KeyRange {
@@ -69,5 +49,9 @@ struct IncompleteRangeLookupResult {
 std::pair<uint64_t, uint64_t> CalculateHash(const uint8_t* data, size_t size);
 uint64_t CalculateIthHash(uint64_t low64, uint64_t high64, size_t i, size_t mod);
 uint64_t CalculateIthHash(const uint8_t* data, size_t size, size_t i, size_t mod);
+
+int Compare(const Key& lhs, const Key& rhs);
+
+std::vector<uint8_t> ToBytes(const std::string& s);
 
 }  // namespace MyLSMTree

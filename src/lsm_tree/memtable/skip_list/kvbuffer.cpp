@@ -43,6 +43,10 @@ size_t KVBuffer::GetTotalKVSizeInBytes() const {
     return (slices_.size() - 1) * slice_size_ + slices_.back().size;
 }
 
+size_t KVBuffer::GetKVBufferSliceSize() const {
+    return slice_size_;
+}
+
 int KVBuffer::Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) const {
     uint32_t i = rhs_offset / slice_size_;
     uint32_t j = (rhs_offset + size) / slice_size_;
@@ -60,7 +64,9 @@ int KVBuffer::Compare(const uint8_t* lhs, size_t rhs_offset, uint32_t size) cons
     if (res != 0) {
         return res;
     }
-    res = std::memcmp(lhs, slices_[j].data, size);
+    if (size) {
+        res = std::memcmp(lhs, slices_[j].data, size);
+    }
 
     return res;
 }
@@ -79,7 +85,9 @@ void KVBuffer::Write(uint8_t* dest, size_t offset, uint32_t size) const {
         dest += slice_size_;
         size -= slice_size_;
     }
-    std::memcpy(dest, slices_[j].data, size);
+    if (size) {
+        std::memcpy(dest, slices_[j].data, size);
+    }
 }
 
 void KVBuffer::WriteToFd(int fd, size_t offset, uint32_t size) const {
@@ -94,7 +102,9 @@ void KVBuffer::WriteToFd(int fd, size_t offset, uint32_t size) const {
         write(fd, slices_[i].data, slice_size_);
         size -= slice_size_;
     }
-    write(fd, slices_[j].data, size);
+    if (size) {
+        write(fd, slices_[j].data, size);
+    }
 }
 
 void KVBuffer::Clear() {

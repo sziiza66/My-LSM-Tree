@@ -2,6 +2,9 @@ build
 .vscode
 .cache
 
+*.sst
+*.data
+
 # Prerequisites
 *.d
 

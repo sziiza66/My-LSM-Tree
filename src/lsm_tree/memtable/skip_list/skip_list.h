@@ -36,11 +36,12 @@ public:
     void Clear();
     size_t Size() const;
     size_t GetDataSizeInBytes() const;
+    size_t GetKVBufferSliceSize() const;
     void MakeIndexBlockInFd(int fd, bool skip_deleted) const;
     std::pair<size_t, size_t> MakeDataBlockInFd(int fd, bool skip_deleted) const;
 
 private:
-    uint32_t FindNode(const Key& key) const;
+    uint32_t FindNode(const Key& key, bool including) const;
     int Compare(uint32_t node_index, const Key& key) const;
 
     uint8_t RandomLevel();

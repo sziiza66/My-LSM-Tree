@@ -16,15 +16,18 @@ class LSMTree {
     using Level = std::vector<Path>;
     using Levels = std::vector<size_t>;
     using LockGuard = std::lock_guard<std::mutex>;
+    using KeyWithValueToken = SSTableReader::KeyWithValueToken;
 
-    struct ComponentInfo { 
+    struct ComponentInfo {
         size_t number;
         bool level_was_created_just_now;
     };
 
 public:
-    LSMTree(size_t fd_cache_size, size_t sstable_scaling_factor, size_t memtable_kv_count_limit, size_t kv_buffer_slice_size,
-            double filter_false_positive_rate, const Path& tree_data);
+    explicit LSMTree(const Path& tree_data);
+    LSMTree(size_t fd_cache_size, size_t sstable_scaling_factor, size_t memtable_kv_count_limit,
+            size_t kv_buffer_slice_size, double filter_false_positive_rate, const Path& tree_data);
+    ~LSMTree() noexcept;
 
     void Insert(const Key& key, const Value& value);
     void Erase(const Key& key);
@@ -39,7 +42,7 @@ private:
     ComponentInfo GetLastComponentAtLevel(size_t level);
 
 private:
-    Memtable memtable_;
+    std::unique_ptr<Memtable> memtable_;
     std::unique_ptr<SSTable::SSTableReadersManager> readers_manager_;
     Levels levels_;
     Path tree_data_;

@@ -43,6 +43,18 @@ size_t Memtable::GetKVCount() const {
     return list_.Size();
 }
 
+size_t Memtable::GetKVBufferSliceSize() const {
+    return list_.GetKVBufferSliceSize();
+}
+
+size_t Memtable::GetFilterBitsCount() const {
+    return filter_.BitsCount();
+}
+
+size_t Memtable::GetFilterHashFuncCount() const {
+    return filter_.HashFuncCount();
+}
+
 void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
     auto [true_kv_count, true_data_size_in_bytes] = list_.MakeDataBlockInFd(fd, skip_deleted);
     filter_.MakeFilterBlockInFd(fd);
@@ -56,5 +68,10 @@ void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
                    .kv_count = true_kv_count};
     write(fd, &meta, sizeof(meta));
 }
+
+void Memtable::DumpKVInFd(int fd) const {
+    list_.MakeDataBlockInFd(fd, false);
+}
+
 
 }  // namespace MyLSMTree::Memtable

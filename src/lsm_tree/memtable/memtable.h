@@ -21,7 +21,11 @@ public:
     void Erase(const Key& key);
     void Clear();
     size_t GetKVCount() const;
+    size_t GetKVBufferSliceSize() const;
+    size_t GetFilterBitsCount() const;
+    size_t GetFilterHashFuncCount() const;
     void MakeSSTableInFd(int fd, bool skip_deleted) const;
+    void DumpKVInFd(int fd) const;
 
 private:
     BloomFilter filter_;
