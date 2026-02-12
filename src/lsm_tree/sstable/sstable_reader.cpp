@@ -221,9 +221,21 @@ size_t SSTableReadersManager::CacheSize() const {
     return cache_size_;
 }
 
+void SSTableReadersManager::Unlink(const Path& path) {
+    auto normal_path = path.lexically_normal();
+    if (auto it = fd_mapping_.find(normal_path); it != fd_mapping_.end()) {
+        close(it->second.fd); 
+        fd_mapping_.erase(it);
+    }
+    unlink(normal_path.c_str());
+}
+
+
 void SSTableReadersManager::DecreaseFdCounter(const Path& normal_path) {
     auto it = fd_mapping_.find(normal_path);
-    assert(it != fd_mapping_.end());
+    if (it == fd_mapping_.end()) {
+        return;
+    }
     --it->second.count;
     if (!it->second.count) {
         cache_queue_.push(normal_path);

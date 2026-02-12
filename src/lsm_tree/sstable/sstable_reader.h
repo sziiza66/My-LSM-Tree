@@ -88,6 +88,7 @@ public:
 
     SSTableReader CreateReader(const Path& path);
     size_t CacheSize() const;
+    void Unlink(const Path& path);
 
 private:
     void DecreaseFdCounter(const Path& normal_path);

@@ -295,6 +295,12 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
     for (size_t i = 0; i < level; ++i) {
         levels_[i] = 0;
     }
+    for (size_t i = 0; i < level; ++i) {
+        for (size_t j = 0; j + 1 < sstable_scaling_factor_; ++j) {
+            readers_manager_->Unlink(GetSSTablePath(i, j).c_str());
+        }
+    }
+    readers_manager_->Unlink(GetSSTablePath(0, sstable_scaling_factor_ - 1).c_str());
 }
 
 size_t LSMTree::CalculateKVCountForLevel(size_t level) const {
