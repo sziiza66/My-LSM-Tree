@@ -193,10 +193,16 @@ void LSMTree::TryCompacting() {
         throw std::runtime_error(std::string("Can't create/write sstable with name ") +
                                  GetSSTablePath(0, number).c_str() + ": " + std::strerror(errno));
     }
-    memtable_->MakeSSTableInFd(fd0, delete_tombstones);
+    size_t true_kv_count = memtable_->MakeSSTableInFd(fd0, delete_tombstones);
     fsync(fd0);
     close(fd0);
     memtable_->Clear();
+    if (!true_kv_count) {
+        if (delete_tombstones) {
+            levels_.pop_back();
+        }
+        return;
+    }
     ++levels_[0];
     if (levels_[0] == sstable_scaling_factor_) {
         size_t i = 1;
@@ -222,11 +228,10 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
         }
     }
 
-    std::vector<size_t> carets(components_count, 0);
-    std::vector<KeyWithValueToken> key_buffer;
+    std::vector<KVIterator> key_buffer;
     key_buffer.reserve(components_count);
     for (const auto& reader : readers) {
-        key_buffer.emplace_back(reader.GetFirstKey());
+        key_buffer.emplace_back(reader.Begin());
     }
     std::vector<size_t> indexblock;
     Offset kv_offset = 0;
@@ -236,7 +241,7 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
     Value value_buffer;
 
     auto comparator = [&key_buffer](const size_t& c1, const size_t& c2) {
-        int cmp = Compare(key_buffer[c1].key, key_buffer[c2].key);
+        int cmp = Compare(key_buffer[c1].GetKey(), key_buffer[c2].GetKey());
         return cmp > 0 || (cmp == 0 && c1 > c2);
     };
     std::priority_queue<size_t, std::vector<size_t>, decltype(comparator)> heap(comparator);
@@ -249,47 +254,47 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
         const auto& smalles_key = key_buffer[smallest_key_index];
         to_advance.clear();
         to_advance.emplace_back(smallest_key_index);
-        while (!heap.empty() && Compare(smalles_key.key, key_buffer[heap.top()].key) == 0) {
+        while (!heap.empty() && Compare(smalles_key.GetKey(), key_buffer[heap.top()].GetKey()) == 0) {
             to_advance.emplace_back(heap.top());
             heap.pop();
         }
 
-        const auto& reader = readers[smallest_key_index];
-        if (!delete_tombstones || smalles_key.value_token.ValueSize() != 0) {
-            value_buffer = reader.GetValueFromToken(smalles_key.value_token, std::move(value_buffer));
-            KVSizes sizes(smalles_key.key.size(), value_buffer.size());
+        if (!delete_tombstones || smalles_key.GetValueSize() != 0) {
+            value_buffer = smalles_key.GetValue(std::move(value_buffer));
+            KVSizes sizes(smalles_key.GetKey().size(), value_buffer.size());
             write(wfd, &sizes, sizeof(sizes));
-            write(wfd, smalles_key.key.data(), smalles_key.key.size() * sizeof(smalles_key.key[0]));
+            write(wfd, smalles_key.GetKey().data(), smalles_key.GetKey().size() * sizeof(smalles_key.GetKey()[0]));
             write(wfd, value_buffer.data(), value_buffer.size() * sizeof(value_buffer[0]));
-            filter.Insert(smalles_key.key.data(), smalles_key.key.size());
+            filter.Insert(smalles_key.GetKey());
             indexblock.emplace_back(kv_offset);
-            size_t kv_size = smalles_key.key.size() + value_buffer.size() + sizeof(sizes);
+            size_t kv_size = smalles_key.GetKey().size() + value_buffer.size() + sizeof(sizes);
             kv_offset += kv_size;
         }
 
         for (size_t i = to_advance.size() - 1; ~i; --i) {
             size_t index = to_advance[i];
-            ++carets[index];
-            if (carets[index] == readers[index].GetKVCount()) {
-                break;
+            if (key_buffer[index].IsEnd()) {
+                continue;
             }
-            auto p = readers[index].GetNextKey(std::move(key_buffer[index]));
-            key_buffer[index] = std::move(p); 
+            ++key_buffer[index];
             heap.push(index);
         }
     }
-
-    filter.MakeFilterBlockInFd(wfd);
-    write(wfd, indexblock.data(), indexblock.size() * sizeof(indexblock[0]));
-    MetaBlock meta(kv_offset, filter.BitsCount(), filter.HashFuncCount(), kv_offset + filter.GetSizeInBytes(),
-                   indexblock.size());
-    write(wfd, &meta, sizeof(meta));
-    fsync(wfd);
-    close(wfd);
+    if (!indexblock.empty()) {
+        filter.MakeFilterBlockInFd(wfd);
+        write(wfd, indexblock.data(), indexblock.size() * sizeof(indexblock[0]));
+        MetaBlock meta(kv_offset, filter.BitsCount(), filter.HashFuncCount(), kv_offset + filter.GetSizeInBytes(),
+                    indexblock.size());
+        write(wfd, &meta, sizeof(meta));
+        fsync(wfd);
+        close(wfd);
+        ++levels_[level];
+    } else if (delete_tombstones) {
+        levels_.pop_back();
+    }
     for (size_t i = 0; i < level; ++i) {
         levels_[i] = 0;
     }
-    ++levels_[level];
 }
 
 size_t LSMTree::CalculateKVCountForLevel(size_t level) const {

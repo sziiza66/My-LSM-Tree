@@ -11,25 +11,29 @@
 namespace MyLSMTree::SSTable {
 
 using SSTableReader = SSTableReadersManager::SSTableReader;
-using KeyAccessToken = SSTableReader::KeyAccessToken;
-using ValueAccessToken = SSTableReader::ValueAccessToken;
 
-Offset KeyAccessToken::KVOffset() const {
-    return kv_offset_;
+bool SSTableReader::KVIterator::IsEnd() const {
+    return kv_.value_token.value_offset_ + kv_.value_token.value_size_ == parent_->meta_.filter_offset;
 }
 
-KeyAccessToken::KeyAccessToken(Offset kv_offset) : kv_offset_(kv_offset) {
+void SSTableReader::KVIterator::operator++() {
+    kv_ = parent_->GetNextKey(std::move(kv_));
 }
 
-Offset ValueAccessToken::ValueOffset() const {
-    return value_offset_;
-}
-size_t ValueAccessToken::ValueSize() const {
-    return value_size_;
+const Key& SSTableReader::KVIterator::GetKey() const {
+    return kv_.key;
 }
 
-ValueAccessToken::ValueAccessToken(Offset value_offset, size_t value_size)
-    : value_offset_(value_offset), value_size_(value_size) {
+Value SSTableReader::KVIterator::GetValue(Value buffer) const {
+    return parent_->GetValueFromToken(kv_.value_token, std::move(buffer));
+}
+
+size_t SSTableReader::KVIterator::GetValueSize() const {
+    return kv_.value_token.value_size_;
+}
+
+SSTableReader::KVIterator::KVIterator(KeyWithValueToken kv, const SSTableReader& parent)
+    : kv_(std::move(kv)), parent_(&parent) {
 }
 
 SSTableReader::SSTableReader(SSTableReadersManager& manager, const Path& path, int fd)
@@ -77,46 +81,6 @@ bool SSTableReader::TestHashes(uint64_t low_hash, uint64_t high_hash) const {
         }
     }
     return true;
-}
-
-SSTableReader::KeyAccessToken SSTableReader::GetIthKeyToken(size_t i) const {
-    Offset offset;
-    pread(fd_, &offset, sizeof(offset), GetIthOffsetOffset(i));
-    return {offset};
-}
-
-SSTableReader::KeyWithValueToken SSTableReader::GetFirstKey() const {
-    KVSizes sizes;
-    pread(fd_, &sizes, sizeof(sizes), 0);
-    Key buffer(sizes.key_size);
-    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), 0 + sizeof(sizes));
-    return {std::move(buffer), {0 + sizeof(sizes) + sizes.key_size, sizes.value_size}};
-}
-
-SSTableReader::KeyWithValueToken SSTableReader::GetKeyFromToken(KeyAccessToken token, Key buffer) const {
-    KVSizes sizes;
-    pread(fd_, &sizes, sizeof(sizes), token.kv_offset_);
-    buffer.resize(sizes.key_size);
-    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), token.kv_offset_ + sizeof(sizes));
-    return {std::move(buffer), {token.kv_offset_ + sizeof(sizes) + sizes.key_size, sizes.value_size}};
-}
-
-SSTableReader::KeyWithValueToken SSTableReader::GetNextKey(KeyWithValueToken token) const {
-    KVSizes sizes;
-    pread(fd_, &sizes, sizeof(sizes), token.value_token.ValueOffset() + token.value_token.ValueSize());
-    token.key.resize(sizes.key_size);
-    pread(fd_, token.key.data(), token.key.size() * sizeof(token.key[0]),
-          token.value_token.ValueOffset() + token.value_token.ValueSize() + sizeof(sizes));
-    token.value_token.value_offset_ =
-        token.value_token.ValueOffset() + token.value_token.ValueSize() + sizeof(sizes) + sizes.key_size;
-    token.value_token.value_size_ = sizes.value_size;
-    return token;
-}
-
-Value SSTableReader::GetValueFromToken(ValueAccessToken token, Value buffer) const {
-    buffer.resize(token.value_size_);
-    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), token.value_offset_);
-    return buffer;
 }
 
 std::pair<LookupResult, Key> SSTableReader::Find(const Key& key, Key buffer) const {
@@ -183,12 +147,56 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReader::FindRange(const KeyRa
     return {std::move(incomplete), std::move(buffer)};
 }
 
+SSTableReader::KVIterator SSTableReader::Begin() const {
+    return KVIterator(GetFirstKey(), *this);
+}
+
 Offset SSTableReader::GetIthOffsetOffset(size_t i) const {
     return meta_.index_offset + i * sizeof(Offset);
 }
 
 size_t SSTableReader::GetFilterBatchOffsetWithIthBit(size_t i) const {
     return meta_.filter_offset + (i / 64) * 8;
+}
+
+SSTableReader::KeyAccessToken SSTableReader::GetIthKeyToken(size_t i) const {
+    Offset offset;
+    pread(fd_, &offset, sizeof(offset), GetIthOffsetOffset(i));
+    return {offset};
+}
+
+SSTableReader::KeyWithValueToken SSTableReader::GetFirstKey() const {
+    KVSizes sizes;
+    pread(fd_, &sizes, sizeof(sizes), 0);
+    Key buffer(sizes.key_size);
+    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), 0 + sizeof(sizes));
+    return {std::move(buffer), {0 + sizeof(sizes) + sizes.key_size, sizes.value_size}};
+}
+
+SSTableReader::KeyWithValueToken SSTableReader::GetKeyFromToken(KeyAccessToken token, Key buffer) const {
+    KVSizes sizes;
+    pread(fd_, &sizes, sizeof(sizes), token.kv_offset_);
+    buffer.resize(sizes.key_size);
+    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), token.kv_offset_ + sizeof(sizes));
+    return {std::move(buffer), {token.kv_offset_ + sizeof(sizes) + sizes.key_size, sizes.value_size}};
+}
+
+SSTableReader::KeyWithValueToken SSTableReader::GetNextKey(KeyWithValueToken token) const {
+    KVSizes sizes;
+    pread(fd_, &sizes, sizeof(sizes), token.value_token.value_offset_ + token.value_token.value_size_);
+    token.key.resize(sizes.key_size);
+    pread(fd_, token.key.data(), token.key.size() * sizeof(token.key[0]),
+          token.value_token.value_offset_ + token.value_token.value_size_ + sizeof(sizes));
+    token.value_token.value_offset_ =
+        token.value_token.value_offset_ + token.value_token.value_size_ + sizeof(sizes) + sizes.key_size;
+    token.value_token.value_size_ = sizes.value_size;
+    return token;
+}
+
+Value SSTableReader::GetValueFromToken(ValueAccessToken token, Value buffer) const {
+    buffer.resize(token.value_size_);
+    pread(fd_, buffer.data(), buffer.size() * sizeof(buffer[0]), token.value_offset_);
+    return buffer;
 }
 
 SSTableReadersManager::SSTableReadersManager(size_t cahce_size) : cache_size_(cahce_size) {

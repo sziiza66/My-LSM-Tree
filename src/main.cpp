@@ -4,7 +4,7 @@
 
 int main() {
 #ifndef NDEBUG
-    Test_Last();
+    Test_All();
 #endif
 
     return 0;

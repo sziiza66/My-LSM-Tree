@@ -24,7 +24,7 @@ public:
     size_t GetKVBufferSliceSize() const;
     size_t GetFilterBitsCount() const;
     size_t GetFilterHashFuncCount() const;
-    void MakeSSTableInFd(int fd, bool skip_deleted) const;
+    size_t MakeSSTableInFd(int fd, bool skip_deleted) const;
     void DumpKVInFd(int fd) const;
 
 private:

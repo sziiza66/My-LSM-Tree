@@ -16,7 +16,7 @@ class LSMTree {
     using Level = std::vector<Path>;
     using Levels = std::vector<size_t>;
     using LockGuard = std::lock_guard<std::mutex>;
-    using KeyWithValueToken = SSTableReader::KeyWithValueToken;
+    using KVIterator = SSTableReader::KVIterator;
 
     struct ComponentInfo {
         size_t number;

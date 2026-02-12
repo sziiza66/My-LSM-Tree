@@ -14,7 +14,7 @@ Memtable::Memtable(BloomFilter filter, size_t kv_count_limit, uint32_t kv_buffer
 }
 
 void Memtable::Insert(const Key& key, const Value& value) {
-    filter_.Insert(key.data(), key.size());
+    filter_.Insert(key);
     list_.Insert(key, value);
 }
 
@@ -30,7 +30,7 @@ IncompleteRangeLookupResult Memtable::FindRange(const KeyRange& range) const {
 }
 
 void Memtable::Erase(const Key& key) {
-    filter_.Insert(key.data(), key.size());
+    filter_.Insert(key);
     list_.Erase(key);
 }
 
@@ -55,8 +55,11 @@ size_t Memtable::GetFilterHashFuncCount() const {
     return filter_.HashFuncCount();
 }
 
-void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
+size_t Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
     auto [true_kv_count, true_data_size_in_bytes] = list_.MakeDataBlockInFd(fd, skip_deleted);
+    if (!true_kv_count) {
+        return true_kv_count;
+    }
     filter_.MakeFilterBlockInFd(fd);
     list_.MakeIndexBlockInFd(fd, skip_deleted);
 
@@ -67,6 +70,7 @@ void Memtable::MakeSSTableInFd(int fd, bool skip_deleted) const {
                    .index_offset = filter_offset + filter_.GetSizeInBytes(),
                    .kv_count = true_kv_count};
     write(fd, &meta, sizeof(meta));
+    return true_kv_count;
 }
 
 void Memtable::DumpKVInFd(int fd) const {

@@ -58,11 +58,11 @@ const std::vector<void (*)()> tests = {
 
             BloomFilter filter(3000, 6);
             for (size_t j = 0; j < data.size(); ++j) {
-                filter.Insert(data[j].data(), data[j].size());
+                filter.Insert(data[j]);
             }
 
             for (size_t j = 0; j < data.size(); ++j) {
-                assert(filter.Find(data[j].data(), data[j].size()));
+                assert(filter.Find(data[j]));
             }
             std::cout << "Test_BloomFilter_Correctness " << i << " OK" << std::endl;
         }
@@ -307,10 +307,10 @@ const std::vector<void (*)()> tests = {
         for (size_t i = 0; i < 100; ++i) {
 
             size_t kvs_cnt = 6400;
-            size_t max_key_size = 200;
+            size_t max_key_size = 3;
             size_t max_value_size = 20;
 
-            std::mt19937 gen(i);
+            std::mt19937 gen(i + 100);
             KVs kvs(kvs_cnt);
             for (size_t j = 0; j < kvs_cnt; ++j) {
                 bool duplicate;
@@ -363,9 +363,248 @@ const std::vector<void (*)()> tests = {
             }
             std::cout << "Test_LSMTree_RangeSearch_Correctness " << i << " OK" << std::endl;
         }
-    }
+    },
+    [] /*Test_LSMTree_Correctnes_2*/ () {
+        using namespace MyLSMTree;
 
-};
+        size_t kvs_cnt = 6400;
+        size_t max_key_size = 3;
+        size_t max_value_size = 20;
+
+        for (size_t i = 0; i < 100; ++i) {
+            std::mt19937 gen(i + 1);
+
+            size_t fd_cache_size = 10;
+            size_t sstable_scaling_factor = 5;
+            size_t memtable_kv_count_limit = 100;
+            size_t kv_buffer_slice_size = 1000;
+            double filter_false_positive_rate = 0.1;
+            Path tree_data = "tree_data.data";
+            MyLSMTree::LSMTree tree(fd_cache_size, sstable_scaling_factor, memtable_kv_count_limit,
+                                    kv_buffer_slice_size, filter_false_positive_rate, tree_data);
+
+            std::map<Key, Value> map;
+            std::vector<Key> keys;
+            for (size_t j = 0; j < kvs_cnt; ++j) {
+                size_t var = gen() % 4;
+                switch (var) {
+                    case 0: {  // insert
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        Value value = GenerateRandomValue(gen, max_value_size, false);
+                        map[key] = value;
+                        tree.Insert(key, value);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 1: {  // erase
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        map.erase(key);
+                        tree.Erase(key);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 2: {  // find
+                        size_t existing = keys.size() ? gen() % 2 : 0;
+                        Key key;
+                        if (existing) {
+                            size_t ind = gen() % keys.size();
+                            key = keys[ind];
+                        } else {
+                            key = GenerateRandomKey(gen, max_key_size);
+                        }
+                        auto tree_ans = tree.Find(key);
+                        auto it = map.find(key);
+                        if (it == map.end()) {
+                            assert(!tree_ans.has_value());
+                        } else {
+                            assert(tree_ans.has_value());
+                            assert(*tree_ans == it->second);
+                        }
+                        break;
+                    }
+                    case 3: {  // find range
+                        size_t p = gen() % 16;
+                        KeyRange range{.lower = std::nullopt,
+                                       .upper = std::nullopt,
+                                       .including_lower = (p & 1) != 0,
+                                       .including_upper = (p & 2) != 0};
+                        if (p & 4) {
+                            range.lower = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        if (p & 8) {
+                            range.upper = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        RangeLookupResult correct_answer;
+                        for (const auto& kv : map) {
+                            if (IsInRange(range, kv.first)) {
+                                correct_answer[kv.first] = kv.second;
+                            }
+                        }
+
+                        RangeLookupResult tree_answer = tree.FindRange(range);
+                        assert(tree_answer == correct_answer);
+                        break;
+                    }
+                }
+            }
+
+            std::cout << "Test_LSMTree_Correctnes_2 " << i << " OK" << std::endl;
+        }
+    },
+    [] /*Test_LSMTree_Save_Load_Correctness*/ () {
+        using namespace MyLSMTree;
+
+        size_t kvs_cnt = 6400;
+        size_t max_key_size = 3;
+        size_t max_value_size = 20;
+
+        for (size_t i = 0; i < 100; ++i) {
+            std::mt19937 gen(i + 100);
+
+            size_t fd_cache_size = 10;
+            size_t sstable_scaling_factor = 5;
+            size_t memtable_kv_count_limit = 100;
+            size_t kv_buffer_slice_size = 1000;
+            double filter_false_positive_rate = 0.1;
+            Path tree_data = "tree_data.data";
+            std::unique_ptr<MyLSMTree::LSMTree> tree =
+                std::make_unique<MyLSMTree::LSMTree>(fd_cache_size, sstable_scaling_factor, memtable_kv_count_limit,
+                                                     kv_buffer_slice_size, filter_false_positive_rate, tree_data);
+
+            std::map<Key, Value> map;
+            std::vector<Key> keys;
+            for (size_t j = 0; j < kvs_cnt; ++j) {
+                size_t var = gen() % 4;
+                switch (var) {
+                    case 0: {  // insert
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        Value value = GenerateRandomValue(gen, max_value_size, false);
+                        map[key] = value;
+                        tree->Insert(key, value);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 1: {  // erase
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        map.erase(key);
+                        tree->Erase(key);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 2: {  // find
+                        size_t existing = keys.size() ? gen() % 2 : 0;
+                        Key key;
+                        if (existing) {
+                            size_t ind = gen() % keys.size();
+                            key = keys[ind];
+                        } else {
+                            key = GenerateRandomKey(gen, max_key_size);
+                        }
+                        auto tree_ans = tree->Find(key);
+                        auto it = map.find(key);
+                        if (it == map.end()) {
+                            assert(!tree_ans.has_value());
+                        } else {
+                            assert(tree_ans.has_value());
+                            assert(*tree_ans == it->second);
+                        }
+                        break;
+                    }
+                    case 3: {  // find range
+                        size_t p = gen() % 16;
+                        KeyRange range{.lower = std::nullopt,
+                                       .upper = std::nullopt,
+                                       .including_lower = (p & 1) != 0,
+                                       .including_upper = (p & 2) != 0};
+                        if (p & 4) {
+                            range.lower = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        if (p & 8) {
+                            range.upper = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        RangeLookupResult correct_answer;
+                        for (const auto& kv : map) {
+                            if (IsInRange(range, kv.first)) {
+                                correct_answer[kv.first] = kv.second;
+                            }
+                        }
+
+                        RangeLookupResult tree_answer = tree->FindRange(range);
+                        assert(tree_answer == correct_answer);
+                        break;
+                    }
+                }
+            }
+
+            tree = nullptr;
+            tree = std::make_unique<MyLSMTree::LSMTree>(tree_data);
+
+            for (size_t j = 0; j < kvs_cnt; ++j) {
+                size_t var = gen() % 4;
+                switch (var) {
+                    case 0: {  // insert
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        Value value = GenerateRandomValue(gen, max_value_size, false);
+                        map[key] = value;
+                        tree->Insert(key, value);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 1: {  // erase
+                        Key key = GenerateRandomKey(gen, max_key_size);
+                        map.erase(key);
+                        tree->Erase(key);
+                        keys.emplace_back(std::move(key));
+                        break;
+                    }
+                    case 2: {  // find
+                        size_t existing = keys.size() ? gen() % 2 : 0;
+                        Key key;
+                        if (existing) {
+                            size_t ind = gen() % keys.size();
+                            key = keys[ind];
+                        } else {
+                            key = GenerateRandomKey(gen, max_key_size);
+                        }
+                        auto tree_ans = tree->Find(key);
+                        auto it = map.find(key);
+                        if (it == map.end()) {
+                            assert(!tree_ans.has_value());
+                        } else {
+                            assert(tree_ans.has_value());
+                            assert(*tree_ans == it->second);
+                        }
+                        break;
+                    }
+                    case 3: {  // find range
+                        size_t p = gen() % 16;
+                        KeyRange range{.lower = std::nullopt,
+                                       .upper = std::nullopt,
+                                       .including_lower = (p & 1) != 0,
+                                       .including_upper = (p & 2) != 0};
+                        if (p & 4) {
+                            range.lower = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        if (p & 8) {
+                            range.upper = GenerateRandomKey(gen, max_key_size * 2);
+                        }
+                        RangeLookupResult correct_answer;
+                        for (const auto& kv : map) {
+                            if (IsInRange(range, kv.first)) {
+                                correct_answer[kv.first] = kv.second;
+                            }
+                        }
+
+                        RangeLookupResult tree_answer = tree->FindRange(range);
+                        assert(tree_answer == correct_answer);
+                        break;
+                    }
+                }
+            }
+
+            std::cout << "Test_LSMTree_Save_Load_Correctness " << i << " OK" << std::endl;
+        }
+    }};
 
 void Test_All() {
     for (const auto& test : tests) {
