@@ -80,10 +80,10 @@ void Benchmark(size_t N, size_t range_size, const Path& path) {
         auto& r = ranges[i];
         r.lower = MakeKey();
         uint64_t base;
-        std::memcpy(&base, r.lower->data() + 8, sizeof(base));
+        std::memcpy(&base, r.lower->data() + 0, sizeof(base));
         base += range_size;
         r.upper = r.lower;
-        std::memcpy(r.upper->data() + 8, &base, sizeof(base));
+        std::memcpy(r.upper->data() + 0, &base, sizeof(base));
         r.including_lower = true;
         r.including_upper = false;
     }

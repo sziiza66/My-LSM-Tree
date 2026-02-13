@@ -11,14 +11,14 @@ int main() {
     Test::Test_All();
 #else
     std::vector<size_t> sizes = {
-        // 100'000,
-        // 1'000'000,
-        // 5'000'000,
+        100'000,
+        1'000'000,
+        5'000'000,
         5'000'000'0,
     };
 
     for (auto N : sizes) {
-        Bench::Benchmark(N, 100, "tree_data.data");
+        Bench::Benchmark(N, 10, "tree_data.data");
         std::cout << "--------------------------\n";
     }
 #endif
