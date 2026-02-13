@@ -22,11 +22,6 @@ uint64_t CalculateIthHash(const uint8_t* data, size_t size, size_t i, size_t mod
     return CalculateIthHash(h128.first, h128.second, i, mod);
 }
 
-int Compare(const Key& lhs, const Key& rhs) {
-    int cmp = std::memcmp(lhs.data(), rhs.data(), lhs.size() < rhs.size() ? lhs.size() : rhs.size());
-    return cmp == 0 ? lhs.size() < rhs.size() ? -1 : lhs.size() > rhs.size() ? 1 : 0 : cmp;
-}
-
 std::vector<uint8_t> ToBytes(const std::string& s) {
     return std::vector<uint8_t>(s.begin(), s.end());
 }

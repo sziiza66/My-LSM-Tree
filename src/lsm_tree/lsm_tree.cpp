@@ -169,10 +169,10 @@ LookupResult LSMTree::Find(const Key& key) const {
 RangeLookupResult LSMTree::FindRange(const KeyRange& range) const {
     const LockGuard guard(mtx_);
 
-    auto res = memtable_->FindRange(range);
+    RangeLookupResult res;
     Key buffer;
-    for (size_t i = 0; i < levels_.size(); ++i) {
-        for (size_t j = levels_[i] - 1; ~j; --j) {
+    for (size_t i = levels_.size() - 1; ~i; --i) {
+        for (size_t j = 0; j < levels_[i]; ++j) {
             auto reader = readers_manager_->CreateReader(GetSSTablePath(i, j));
             auto [res_ret, buffer_ret] = reader.FindRange(range, std::move(res), std::move(buffer));
             res = std::move(res_ret);
@@ -180,7 +180,7 @@ RangeLookupResult LSMTree::FindRange(const KeyRange& range) const {
         }
     }
 
-    return res.accumutaled;
+    return memtable_->FindRange(range, std::move(res));
 }
 
 void LSMTree::TryCompacting() {
@@ -241,7 +241,7 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
     Value value_buffer;
 
     auto comparator = [&key_buffer](const size_t& c1, const size_t& c2) {
-        int cmp = Compare(key_buffer[c1].GetKey(), key_buffer[c2].GetKey());
+        auto cmp = key_buffer[c1].GetKey() <=> key_buffer[c2].GetKey();
         return cmp > 0 || (cmp == 0 && c1 > c2);
     };
     std::priority_queue<size_t, std::vector<size_t>, decltype(comparator)> heap(comparator);
@@ -254,7 +254,7 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
         const auto& smalles_key = key_buffer[smallest_key_index];
         to_advance.clear();
         to_advance.emplace_back(smallest_key_index);
-        while (!heap.empty() && Compare(smalles_key.GetKey(), key_buffer[heap.top()].GetKey()) == 0) {
+        while (!heap.empty() && (smalles_key.GetKey() <=> key_buffer[heap.top()].GetKey()) == 0) {
             to_advance.emplace_back(heap.top());
             heap.pop();
         }
@@ -284,7 +284,7 @@ void LSMTree::CompactLevelsUpTo(size_t level) {
         filter.MakeFilterBlockInFd(wfd);
         write(wfd, indexblock.data(), indexblock.size() * sizeof(indexblock[0]));
         MetaBlock meta(kv_offset, filter.BitsCount(), filter.HashFuncCount(), kv_offset + filter.GetSizeInBytes(),
-                    indexblock.size());
+                       indexblock.size());
         write(wfd, &meta, sizeof(meta));
         fsync(wfd);
         close(wfd);

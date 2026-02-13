@@ -91,7 +91,8 @@ std::pair<LookupResult, Key> SSTableReader::Find(const Key& key, Key buffer) con
         auto key_token = GetIthKeyToken(m - 1);
         auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
         buffer = std::move(buffer_ret);
-        int cmp = Compare(key, buffer);
+        // int cmp = Compare(key, buffer);
+        auto cmp = key <=> buffer;
         if (cmp < 0) {
             r = m;
         } else if (cmp > 0) {
@@ -103,9 +104,8 @@ std::pair<LookupResult, Key> SSTableReader::Find(const Key& key, Key buffer) con
     return {std::nullopt, std::move(buffer)};
 }
 
-std::pair<IncompleteRangeLookupResult, Key> SSTableReader::FindRange(const KeyRange& range,
-                                                                     IncompleteRangeLookupResult incomplete,
-                                                                     Key buffer) const {
+std::pair<RangeLookupResult, Key> SSTableReader::FindRange(const KeyRange& range, RangeLookupResult accumulated,
+                                                           Key buffer) const {
     size_t l = 0;
     size_t r = meta_.kv_count + 1;
     if (range.lower.has_value()) {
@@ -114,7 +114,8 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReader::FindRange(const KeyRa
             auto key_token = GetIthKeyToken(m - 1);
             auto [buffer_ret, value_token] = GetKeyFromToken(key_token, std::move(buffer));
             buffer = std::move(buffer_ret);
-            int cmp = Compare(*range.lower, buffer);
+            // cmp = Compare(*range.lower, buffer);
+            auto cmp = *range.lower <=> buffer;
             if (cmp < 0) {
                 r = m;
             } else if (cmp > 0) {
@@ -132,19 +133,15 @@ std::pair<IncompleteRangeLookupResult, Key> SSTableReader::FindRange(const KeyRa
         if (range.upper.has_value() && (range.including_upper ? buffer > *range.upper : buffer >= *range.upper)) {
             break;
         }
-        if (incomplete.accumutaled.find(buffer) != incomplete.accumutaled.end() ||
-            incomplete.deleted.find(buffer) != incomplete.deleted.end()) {
-            continue;
-        }
-        Value value = GetValueFromToken(value_token);
-        if (value.empty()) {
-            incomplete.deleted.insert(std::move(buffer));
+        if (value_token.value_size_ == 0) {
+            accumulated.erase(buffer);
         } else {
-            incomplete.accumutaled[std::move(buffer)] = std::move(value);
+            Value value = GetValueFromToken(value_token);
+            accumulated[buffer] = std::move(value);
         }
     }
 
-    return {std::move(incomplete), std::move(buffer)};
+    return {std::move(accumulated), std::move(buffer)};
 }
 
 SSTableReader::KVIterator SSTableReader::Begin() const {
@@ -224,12 +221,11 @@ size_t SSTableReadersManager::CacheSize() const {
 void SSTableReadersManager::Unlink(const Path& path) {
     auto normal_path = path.lexically_normal();
     if (auto it = fd_mapping_.find(normal_path); it != fd_mapping_.end()) {
-        close(it->second.fd); 
+        close(it->second.fd);
         fd_mapping_.erase(it);
     }
     unlink(normal_path.c_str());
 }
-
 
 void SSTableReadersManager::DecreaseFdCounter(const Path& normal_path) {
     auto it = fd_mapping_.find(normal_path);

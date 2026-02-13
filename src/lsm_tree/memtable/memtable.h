@@ -16,7 +16,7 @@ public:
 
     void Insert(const Key& key, const Value& value);
     LookupResult Find(const Key& key) const;
-    IncompleteRangeLookupResult FindRange(const KeyRange& range) const;
+    RangeLookupResult FindRange(const KeyRange& range, RangeLookupResult accumulated = {}) const;
 
     void Erase(const Key& key);
     void Clear();

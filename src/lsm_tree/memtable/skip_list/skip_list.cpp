@@ -102,26 +102,26 @@ LookupResult SkipList::Find(const Key& key) const {
     return std::nullopt;
 }
 
-IncompleteRangeLookupResult SkipList::FindRange(const KeyRange& range) const {
-    IncompleteRangeLookupResult result{};
+RangeLookupResult SkipList::FindRange(const KeyRange& range, RangeLookupResult accumulated) const {
     if (!kv_count_) {
-        return result;
+        return accumulated;
     }
     uint32_t cur_node = range.lower.has_value() ? FindNode(*range.lower, range.including_lower) : nodes_[0].next[0];
+    Key key_buffer;
     for (; cur_node != kNil && (!range.upper.has_value() || Compare(cur_node, *range.upper) > (range.including_upper ? -1 : 0));
          cur_node = nodes_[cur_node].next[0]) {
         const Node& node = nodes_[cur_node];
-        Key key(node.key_size);
-        kvbuffer_.Write(key.data(), node.key_offset, key.size());
+        key_buffer.resize(node.key_size);
+        kvbuffer_.Write(key_buffer.data(), node.key_offset, key_buffer.size() * sizeof(key_buffer[0]));
         if (!node.value_size) {
-            result.deleted.insert(std::move(key));
+            accumulated.erase(key_buffer);
         } else {
             Value value(node.value_size);
-            kvbuffer_.Write(value.data(), node.key_offset + node.key_size, value.size());
-            result.accumutaled[std::move(key)] = std::move(value);
+            kvbuffer_.Write(value.data(), node.key_offset + node.key_size, value.size() * sizeof(value[0]));
+            accumulated[std::move(key_buffer)] = std::move(value);
         }
     }
-    return result;
+    return accumulated;
 }
 
 void SkipList::Clear() {

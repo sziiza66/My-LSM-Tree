@@ -60,8 +60,8 @@ public:
         bool TestHash(uint64_t hash) const;
         bool TestHashes(uint64_t low_hash, uint64_t high_hash) const;
         std::pair<LookupResult, Key> Find(const Key& key, Key buffer = {}) const;
-        std::pair<IncompleteRangeLookupResult, Key> FindRange(const KeyRange& range,
-                                                              IncompleteRangeLookupResult incomplete = {},
+        std::pair<RangeLookupResult, Key> FindRange(const KeyRange& range,
+                                                              RangeLookupResult accumulated = {},
                                                               Key buffer = {}) const;
         KVIterator Begin() const;
 

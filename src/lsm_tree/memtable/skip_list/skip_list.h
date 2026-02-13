@@ -32,7 +32,7 @@ public:
     void Insert(const Key& key, const Value& value);
     void Erase(const Key& key);
     LookupResult Find(const Key& key) const;
-    IncompleteRangeLookupResult FindRange(const KeyRange& range) const;
+    RangeLookupResult FindRange(const KeyRange& range, RangeLookupResult accumulated = {}) const;
     void Clear();
     size_t Size() const;
     size_t GetDataSizeInBytes() const;

@@ -50,8 +50,6 @@ std::pair<uint64_t, uint64_t> CalculateHash(const uint8_t* data, size_t size);
 uint64_t CalculateIthHash(uint64_t low64, uint64_t high64, size_t i, size_t mod);
 uint64_t CalculateIthHash(const uint8_t* data, size_t size, size_t i, size_t mod);
 
-int Compare(const Key& lhs, const Key& rhs);
-
 std::vector<uint8_t> ToBytes(const std::string& s);
 
 }  // namespace MyLSMTree

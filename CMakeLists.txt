@@ -4,23 +4,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE Debug)
 
 # additional warnings
 add_compile_options(-Wall -Wextra -Wpedantic)
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
-    # set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -fomit-frame-pointer -fno-semantic-interposition -ftree-vectorize -flto -unroll-loops -mavx2 -mbmi -mbmi2 -mpopcnt -mlzcnt -mfma -mabm -DNDEBUG")
-else()
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -msse2 -flto -DNDEBUG")
-endif()
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -fomit-frame-pointer -ftree-vectorize -flto -mavx2 -mbmi2 -mpopcnt -mlzcnt -mfma -DNDEBUG")
+
 
 message(CMAKE_CXX_FLAGS_RELEASE = ${CMAKE_CXX_FLAGS_RELEASE})
 
 SET(SOURCES
     src/main.cpp
+    src/bench.cpp
     src/lsm_tree/common.cpp
     src/lsm_tree/lsm_tree.cpp
     src/lsm_tree/sstable/sstable_reader.cpp

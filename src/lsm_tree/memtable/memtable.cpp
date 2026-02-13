@@ -25,8 +25,8 @@ LookupResult Memtable::Find(const Key& key) const {
     return list_.Find(key);
 }
 
-IncompleteRangeLookupResult Memtable::FindRange(const KeyRange& range) const {
-    return list_.FindRange(range);
+RangeLookupResult Memtable::FindRange(const KeyRange& range, RangeLookupResult accumulated) const {
+    return list_.FindRange(range, std::move(accumulated));
 }
 
 void Memtable::Erase(const Key& key) {

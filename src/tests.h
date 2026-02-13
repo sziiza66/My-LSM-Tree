@@ -7,8 +7,9 @@
 #include <vector>
 #include "lsm_tree/lsm_tree.h"
 #include "lsm_tree/memtable/memtable.h"
-#include "lsm_tree/memtable/skip_list/skip_list.h"
 #include "lsm_tree/common.h"
+
+namespace Test {
 
 namespace {
 using namespace MyLSMTree;
@@ -197,20 +198,20 @@ const std::vector<void (*)()> tests = {
                 if (p & 8) {
                     range.upper = GenerateRandomKey(gen, max_key_size * 2);
                 }
-                IncompleteRangeLookupResult correct_answer;
+                RangeLookupResult correct_answer;
                 for (const auto& kv : kvs) {
                     if (IsInRange(range, kv.key)) {
                         if (kv.value.empty()) {
-                            correct_answer.deleted.insert(kv.key);
+                            correct_answer.erase(kv.key);
                         } else {
-                            correct_answer.accumutaled[kv.key] = kv.value;
+                            correct_answer[kv.key] = kv.value;
                         }
                     }
                 }
 
-                IncompleteRangeLookupResult table_answer = table.FindRange(range);
-                assert(table_answer.accumutaled == correct_answer.accumutaled);
-                assert(table_answer.deleted == correct_answer.deleted);
+                RangeLookupResult table_answer = table.FindRange(range);
+                assert(table_answer == correct_answer);
+                assert(table_answer == correct_answer);
             }
             std::cout << "Test_Memtable_RangeSearch_Correctness " << i << " OK" << std::endl;
         }
@@ -615,3 +616,5 @@ void Test_All() {
 void Test_Last() {
     tests.back()();
 }
+
+}  // namespace Test
