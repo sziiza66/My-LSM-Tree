@@ -3,7 +3,7 @@
 ```
 Insert N=100000  ops/sec=115725
 Point lookup N=100000  ops/sec=155050
-Short range (size=10) N=100000  queries/sec=102.974
+Short range N=100000  queries/sec=102.974
 
 Insert N=1000000  ops/sec=42184.3
 Point lookup N=1000000  ops/sec=146311
