@@ -1,0 +1,2 @@
+/usr/bin/ar qc libreverse_index_parser.a CMakeFiles/reverse_index_parser.dir/generated/parser.cpp.o CMakeFiles/reverse_index_parser.dir/generated/lexer.cpp.o CMakeFiles/reverse_index_parser.dir/parser_wrapper.cpp.o
+/usr/bin/ranlib libreverse_index_parser.a

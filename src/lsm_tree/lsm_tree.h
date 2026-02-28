@@ -8,6 +8,14 @@
 
 namespace MyLSMTree {
 
+struct TreeConstructorProps {
+    size_t fd_cache_size;
+    size_t sstable_scaling_factor;
+    size_t memtable_kv_count_limit;
+    size_t kv_buffer_slice_size;
+    double filter_false_positive_rate;
+};
+
 class LSMTree {
     using Memtable = Memtable::Memtable;
     using BloomFilter = MyLSMTree::Memtable::BloomFilter;
@@ -25,6 +33,7 @@ class LSMTree {
 
 public:
     explicit LSMTree(const Path& tree_data);
+    LSMTree(TreeConstructorProps props, const Path& tree_data);
     LSMTree(size_t fd_cache_size, size_t sstable_scaling_factor, size_t memtable_kv_count_limit,
             size_t kv_buffer_slice_size, double filter_false_positive_rate, const Path& tree_data);
     ~LSMTree() noexcept;
@@ -39,6 +48,7 @@ private:
     void CompactLevelsUpTo(size_t level);
     size_t CalculateKVCountForLevel(size_t level) const;
     Path GetSSTablePath(size_t level, size_t number) const;
+    Path GetTreeMetadataPath() const;
     ComponentInfo GetLastComponentAtLevel(size_t level);
 
 private:

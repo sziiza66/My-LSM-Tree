@@ -53,22 +53,22 @@ Memtable::BloomFilter MakeOptimalFilter(size_t key_count, double false_positive_
 
 }  // namespace
 
-LSMTree::LSMTree(const Path& tree_data) {
-    int fd = open(tree_data.c_str(), O_RDONLY | O_CLOEXEC);
+LSMTree::LSMTree(const Path& tree_data) : tree_data_(tree_data) {
+    std::filesystem::create_directories(tree_data_);
+    int fd = open(GetTreeMetadataPath().c_str(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
-        ThrowCantOpenTree(tree_data);
+        ThrowCantOpenTree(tree_data_);
     }
     TreeParams params;
     ssize_t r = read(fd, &params, sizeof(params));
     if (r != sizeof(params)) {
-        ThrowCantOpenTree(tree_data);
+        ThrowCantOpenTree(tree_data_);
     }
 
     memtable_ =
         std::make_unique<Memtable>(MakeOptimalFilter(params.memtable_kv_count_limit, params.filter_false_positive_rate),
                                    params.memtable_kv_count_limit, params.kv_buffer_slice_size);
     readers_manager_ = std::make_unique<SSTable::SSTableReadersManager>(params.fd_cache_size);
-    tree_data_ = tree_data;
     sstable_scaling_factor_ = params.sstable_scaling_factor;
     filter_false_positive_rate_ = params.filter_false_positive_rate;
     memtable_kv_count_limit_ = params.memtable_kv_count_limit;
@@ -91,6 +91,18 @@ LSMTree::LSMTree(const Path& tree_data) {
     close(fd);
 }
 
+LSMTree::LSMTree(TreeConstructorProps props, const Path& tree_data)
+    : memtable_(
+          std::make_unique<Memtable>(MakeOptimalFilter(props.memtable_kv_count_limit, props.filter_false_positive_rate),
+                                     props.memtable_kv_count_limit, props.kv_buffer_slice_size)),
+      readers_manager_(std::make_unique<SSTable::SSTableReadersManager>(props.fd_cache_size)),
+      tree_data_(tree_data),
+      sstable_scaling_factor_(props.sstable_scaling_factor),
+      memtable_kv_count_limit_(props.memtable_kv_count_limit),
+      filter_false_positive_rate_(props.filter_false_positive_rate) {
+    std::filesystem::create_directories(tree_data_);
+}
+
 LSMTree::LSMTree(size_t fd_cache_size, size_t sstable_scaling_factor, size_t memtable_kv_count_limit,
                  size_t kv_buffer_slice_size, double filter_false_positive_rate, const Path& tree_data)
     : memtable_(std::make_unique<Memtable>(MakeOptimalFilter(memtable_kv_count_limit, filter_false_positive_rate),
@@ -100,6 +112,7 @@ LSMTree::LSMTree(size_t fd_cache_size, size_t sstable_scaling_factor, size_t mem
       sstable_scaling_factor_(sstable_scaling_factor),
       memtable_kv_count_limit_(memtable_kv_count_limit),
       filter_false_positive_rate_(filter_false_positive_rate) {
+    std::filesystem::create_directories(tree_data_);
 }
 
 LSMTree::~LSMTree() noexcept {
@@ -112,7 +125,7 @@ LSMTree::~LSMTree() noexcept {
                       .kv_buffer_slice_size = memtable_->GetKVBufferSliceSize(),
                       .fd_cache_size = readers_manager_->CacheSize(),
                       .level_count = levels_.size()};
-    int fd = open(tree_data_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    int fd = open(GetTreeMetadataPath().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     if (fd < 0) {
         return;
     }
@@ -312,7 +325,11 @@ size_t LSMTree::CalculateKVCountForLevel(size_t level) const {
 }
 
 Path LSMTree::GetSSTablePath(size_t level, size_t number) const {
-    return std::to_string(level) + '_' + std::to_string(number) + ".sst";
+    return tree_data_ / (std::to_string(level) + '_' + std::to_string(number) + ".sst");
+}
+
+Path LSMTree::GetTreeMetadataPath() const {
+    return tree_data_ / "tree_metadata";
 }
 
 LSMTree::ComponentInfo LSMTree::GetLastComponentAtLevel(size_t level) {
