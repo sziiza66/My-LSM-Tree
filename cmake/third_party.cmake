@@ -38,26 +38,6 @@ add_dependencies(roaring generate_roaring)
 target_include_directories(roaring PUBLIC ${ROARING_GEN_DIR})
 
 ########################################
-# Spacy-cpp
-########################################
-
-set(SPACY_HEADER "${THIRD_PARTY_DIR}/spacy-cpp/src/spacy/nlp.h")
-set(REPLACE_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/replace_private.py")
-
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-
-add_custom_target(
-    patch_spacy_nlp_header
-    COMMAND ${Python3_EXECUTABLE} "${REPLACE_SCRIPT}" "${SPACY_HEADER}"
-    COMMENT "Patching spacy-cpp: replacing private: with protected:"
-)
-
-add_subdirectory(${THIRD_PARTY_DIR}/spacy-cpp)
-
-add_dependencies(spacy patch_spacy_nlp_header)
-
-
-########################################
 # utfcpp
 ########################################
 

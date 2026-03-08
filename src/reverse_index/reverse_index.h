@@ -1,14 +1,13 @@
 #pragma once
 
-#include <map>
 #include <unordered_set>
 
 #include "common.h"
 #include "parser/bool_ast.h"
 #include "../lsm_tree/lsm_tree.h"
 
-#include "nlp_wrapper.h"
 #include "roaring.hh"
+#include "utf8/core.h"
 
 namespace MyLSMTree::ReverseIndex {
 
@@ -28,9 +27,17 @@ public:
 
     void InsertDocument(const Path& doc_path);
     std::vector<Path> LookupWithExpression(const std::string& query) const;
+    std::vector<Path> LookupWithPrefix(const std::string& prefix) const;
+    std::vector<Path> LookupWithWildcard(const std::string& wildcard) const;
 
 private:
+    std::set<NGram> CleanseTextAndGenerateNGrams(const std::string& text) const;
+    bool iSPunctAllowed(char c) const;
+    void FetchNGramsFromWord(std::set<NGram>& storage, const std::string& word) const;
+    void FetchNGramsFromWildcard(std::set<NGram>& storage, const std::string& word) const;
+    TokenId GetTokenIdAndInsert(const NGram& n_gram);
     TokenId GetTokenIdAndInsert(const Token& token);
+    std::optional<TokenId> GetTokenId(const NGram& token) const;
     std::optional<TokenId> GetTokenId(const Token& token) const;
     void AssociateTokenWithDocument(TokenId token_id, DocId doc_id);
     Key GetLSMKeyFromToken(Token token) const;
@@ -42,12 +49,10 @@ private:
     LSMTree index_;
     LSMTree dictionary_;
     LSMTree documents_;
-    Spacy::Spacy spacy_;
-    // NlpWrapper nlp_;
     Path index_data_;
     TokenId token_count_;
     DocId doc_count_;
-    static const std::unordered_set<std::string> stop_words_;
+    static const std::unordered_map<utf8::utfchar32_t, std::string> fold_map_;
 };
 
 }  // namespace MyLSMTree::ReverseIndex

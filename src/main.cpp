@@ -4,8 +4,9 @@
 int main() {
     
     // BuildLargeIndex();
-    TestLargeIndex();
-
+    // TestLargeIndex();
+    // TestPrefixSearchLargeIndex();
+    TestWildcardSearchLargeIndex();
 
     return 0;
 }

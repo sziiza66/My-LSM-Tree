@@ -4,8 +4,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set(CMAKE_BUILD_TYPE Release)
-# set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 # additional warnings
 add_compile_options(-Wall -Wextra -Wpedantic)
@@ -27,7 +27,6 @@ SET(SOURCES
     src/lsm_tree/memtable/bloom_filter/bitset.cpp
     src/lsm_tree/memtable/bloom_filter/bloom_filter.cpp
     src/reverse_index/reverse_index.cpp
-    src/reverse_index/nlp_wrapper.cpp
     src/reverse_index/parser/parser_wrapper.cpp
     src/reverse_index/parser/bool_ast.cpp)
 
@@ -37,4 +36,4 @@ add_subdirectory(src/reverse_index/parser)
 target_link_libraries(main PRIVATE reverse_index_parser)
 
 include(cmake/third_party.cmake)
-target_link_libraries(main PRIVATE xxHash::xxhash roaring spacy utf8cpp)
+target_link_libraries(main PRIVATE xxHash::xxhash roaring utf8cpp)

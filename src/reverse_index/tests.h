@@ -18,6 +18,30 @@ void RunLookups(const MyLSMTree::ReverseIndex::ReverseIndex& index, const std::v
     }
 }
 
+void RunPrefixLookups(const MyLSMTree::ReverseIndex::ReverseIndex& index, const std::vector<std::string>& queries) {
+    for (const auto& query : queries) {
+        std::cout << "Searching for: \"" << query << "\"..." << std::endl;
+        auto res = index.LookupWithPrefix(query);
+        std::cout << "Found " << res.size() << " documents:" << std::endl;
+        for (const auto& path : res) {
+            std::cout << path.c_str() << '\n';
+        }
+        std::cout << std::endl;
+    }
+}
+
+void RunWildcardLookups(const MyLSMTree::ReverseIndex::ReverseIndex& index, const std::vector<std::string>& queries) {
+    for (const auto& query : queries) {
+        std::cout << "Searching for: \"" << query << "\"..." << std::endl;
+        auto res = index.LookupWithWildcard(query);
+        std::cout << "Found " << res.size() << " documents:" << std::endl;
+        for (const auto& path : res) {
+            std::cout << path.c_str() << '\n';
+        }
+        std::cout << std::endl;
+    }
+}
+
 }  // namespace
 
 void BuildLargeIndex() {
@@ -59,10 +83,49 @@ void TestLargeIndex() {
         "thou & kill, & thou & art & become & a & transgressor & of & the & law.",
 
         "1999 | 2000 | 1901 | 1990",
+        ""
     };
 
     std::cout << "Initialising index" << std::endl;
     MyLSMTree::ReverseIndex::ReverseIndex index(large_index_dir);
 
     RunLookups(index, queries);
+}
+
+void TestPrefixSearchLargeIndex() {
+    const std::vector<std::string> queries = {
+        "tsar",
+        "electro",
+        "pseudo",
+        "pseudon",
+        // "tra",
+        // "tran",
+        // "trans",
+        // "transf"
+        "nebu",
+        "nebul",
+        "nebuc",
+        "http",
+        "https",
+        "$10",
+        "$100",
+    };
+
+    std::cout << "Initialising index" << std::endl;
+    MyLSMTree::ReverseIndex::ReverseIndex index(large_index_dir);
+
+    RunPrefixLookups(index, queries);
+}
+
+void TestWildcardSearchLargeIndex() {
+    const std::vector<std::string> queries = {
+        "552*171",
+        "62*541",
+        "characteri*ation" // characterisation or characterization
+    };
+
+    std::cout << "Initialising index" << std::endl;
+    MyLSMTree::ReverseIndex::ReverseIndex index(large_index_dir);
+
+    RunWildcardLookups(index, queries);
 }

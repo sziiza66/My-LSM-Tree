@@ -69,61 +69,22 @@ void ReverseIndex::InsertDocument(const Path& doc_path) {
     Value value(doc_name.begin(), doc_name.end());
     documents_.Insert(key, value);
 
-    constexpr size_t chunk_size = 1024 * 1024 / 2;
-    std::set<TokenId> token_ids;
-    auto tolower = [](unsigned char c) { return std::tolower(c); };
-    NlpWrapper nlp = spacy_.load("en_core_web_lg");
-    for (size_t chunk_start = 0, chunk_end = 0; chunk_start < text.size(); chunk_start = chunk_end) {
-        chunk_end = chunk_start + chunk_size < text.size() ? chunk_start + chunk_size : text.size();
-        while (chunk_end > chunk_start && (text[chunk_end - 1] & 0xC0) == 0x80) {
-            --chunk_end;
-        }
-        size_t word_end = chunk_end;
-        while (word_end > chunk_start && !std::isspace(text[word_end - 1])) {
-            --word_end;
-        }
-        chunk_end = word_end != chunk_start ? word_end : chunk_end;
-        chunk_end = chunk_end == chunk_start
-                        ? (chunk_start + chunk_size < text.size() ? chunk_start + chunk_size : text.size())
-                        : chunk_end;
-        std::string chunk =
-            utf8::replace_invalid(std::string_view(text.data() + chunk_start, chunk_end - chunk_start), U' ');
-        auto parsed = nlp.parse(chunk);
-        for (const auto& token : parsed.tokens()) {
-            if (token.is_punct() || token.is_space()) {
-                continue;
-            }
-            auto lemma = token.lemma_();
-            if (stop_words_.find(lemma) != stop_words_.end()) {
-                continue;
-            }
-            std::transform(lemma.begin(), lemma.end(), lemma.begin(), tolower);
-            token_ids.insert(GetTokenIdAndInsert(lemma));
-        }
-        // std::cout << "chunk done" << std::endl;
-    }
+    text = utf8::replace_invalid(std::string_view(text.data(), text.size()), U' ');
+    auto n_grams = CleanseTextAndGenerateNGrams(text);
 
-    for (auto token_id : token_ids) {
-        AssociateTokenWithDocument(token_id, doc_count_);
+    for (const auto& n_gram : n_grams) {
+        AssociateTokenWithDocument(GetTokenIdAndInsert(n_gram), doc_count_);
     }
     ++doc_count_;
 }
 
 std::vector<Path> ReverseIndex::LookupWithExpression(const std::string& query) const {
-    NlpWrapper nlp = spacy_.load("en_core_web_lg");
     auto ast = BoolAst::ParseQuery(query, [&](const std::string& word) {
-        auto parsed = nlp.parse(word);
+        auto n_grams = CleanseTextAndGenerateNGrams(word);
         BoolAst::Operand res;
-        for (const auto& token : parsed.tokens()) {
-            if (token.is_punct() || token.is_space()) {
-                continue;
-            }
-            auto lemma = token.lemma_();
-            if (stop_words_.find(lemma) != stop_words_.end()) {
-                continue;
-            }
-            std::transform(lemma.begin(), lemma.end(), lemma.begin(), tolower);
-            auto token_id = GetTokenId(lemma);
+        res.reserve(n_grams.size());
+        for (const auto& n_gram : n_grams) {
+            auto token_id = GetTokenId(n_gram);
             if (token_id) {
                 res.emplace_back(*token_id);
             } else {
@@ -137,6 +98,139 @@ std::vector<Path> ReverseIndex::LookupWithExpression(const std::string& query) c
     return LookupWithAst(*ast);
 }
 
+std::vector<Path> ReverseIndex::LookupWithPrefix(const std::string& prefix) const {
+    std::string word = std::string{0x01} + prefix;
+    std::set<NGram> n_grams;
+    FetchNGramsFromWord(n_grams, word);
+    BoolAst::Operand res;
+    res.reserve(n_grams.size());
+    for (const auto& n_gram : n_grams) {
+        auto token_id = GetTokenId(n_gram);
+        if (token_id) {
+            res.emplace_back(*token_id);
+        } else {
+            res.emplace_back(token_count_);
+            break;
+        }
+    }
+    auto ast = BoolAst::MakeArgNode(std::move(res));
+    return LookupWithAst(*ast);
+}
+
+std::vector<Path> ReverseIndex::LookupWithWildcard(const std::string& wildcard) const {
+    std::string word = std::string{0x01} + wildcard + std::string{0x02};
+    std::set<NGram> n_grams;
+    FetchNGramsFromWildcard(n_grams, word);
+    BoolAst::Operand res;
+    res.reserve(n_grams.size());
+    for (const auto& n_gram : n_grams) {
+        auto token_id = GetTokenId(n_gram);
+        if (token_id) {
+            res.emplace_back(*token_id);
+        } else {
+            res.emplace_back(token_count_);
+            break;
+        }
+    }
+    auto ast = BoolAst::MakeArgNode(std::move(res));
+    return LookupWithAst(*ast);
+}
+
+std::set<NGram> ReverseIndex::CleanseTextAndGenerateNGrams(const std::string& text) const {
+    std::string correct_text = utf8::replace_invalid(std::string_view(text.data(), text.size()), U' ');
+    auto it = utf8::iterator(correct_text.begin(), correct_text.begin(), correct_text.end());
+    auto end = utf8::iterator(correct_text.end(), correct_text.begin(), correct_text.end());
+
+    std::set<NGram> result;
+    std::string word = {0x01};
+
+    for (; it != end; ++it) {
+        utf8::utfchar32_t cp = *it;
+
+        if (cp < 128) {
+            char c = static_cast<char>(cp);
+
+            c = std::tolower(static_cast<unsigned char>(c));
+
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || iSPunctAllowed(c)) {
+                word.push_back(c);
+                continue;
+            }
+        } else {
+            auto it = fold_map_.find(cp);
+            if (it != fold_map_.end()) {
+                word += it->second;
+                continue;
+            }
+        }
+
+        if (word.size() > 3) {
+            word.push_back(0x02);
+            FetchNGramsFromWord(result, word);
+        }
+        word.clear();
+        word.push_back(0x01);
+    }
+    if (word.size() > 3) {
+        word.push_back(0x02);
+        FetchNGramsFromWord(result, word);
+    }
+
+    return result;
+}
+
+void ReverseIndex::FetchNGramsFromWord(std::set<NGram>& storage, const std::string& word) const {
+    for (size_t n_gram_size = 3; n_gram_size <= 6; ++n_gram_size) {
+        for (size_t pos = 0; pos + n_gram_size <= word.size(); ++pos) {
+            NGram gram(n_gram_size);
+            std::memcpy(gram.data(), &word[pos], n_gram_size);
+            storage.emplace(std::move(gram));
+        }
+    }
+}
+
+void ReverseIndex::FetchNGramsFromWildcard(std::set<NGram>& storage, const std::string& word) const {
+    for (size_t n_gram_size = 3; n_gram_size <= 6; ++n_gram_size) {
+        for (size_t pos = 0; pos + n_gram_size <= word.size(); ++pos) {
+            bool skip = false;
+            for (size_t i = pos; !skip && i < pos + n_gram_size; ++i) {
+                skip = word[i] == '*';
+            }
+            if (skip) {
+                continue;
+            }
+            NGram gram(n_gram_size);
+            std::memcpy(gram.data(), &word[pos], n_gram_size);
+            storage.emplace(std::move(gram));
+        }
+    }
+}
+
+bool ReverseIndex::iSPunctAllowed(char c) const {
+    switch (c) {
+        case '-':
+        case '_':
+        case '@':
+        case '#':
+        case '%':
+        case '$':
+        return true;
+    }
+    return false;
+}
+
+TokenId ReverseIndex::GetTokenIdAndInsert(const Key& n_gram) {
+    if (auto res = dictionary_.Find(n_gram); res.has_value()) {
+        TokenId ret;
+        std::memcpy(&ret, res->data(), sizeof(ret));
+        return ret;
+    }
+    Value value(sizeof(token_count_));
+    std::memcpy(value.data(), &token_count_, sizeof(token_count_));
+    dictionary_.Insert(n_gram, value);
+    return token_count_++;
+}
+
 TokenId ReverseIndex::GetTokenIdAndInsert(const Token& token) {
     Key key = GetLSMKeyFromToken(token);
     if (auto res = dictionary_.Find(key); res.has_value()) {
@@ -148,6 +242,15 @@ TokenId ReverseIndex::GetTokenIdAndInsert(const Token& token) {
     std::memcpy(value.data(), &token_count_, sizeof(token_count_));
     dictionary_.Insert(key, value);
     return token_count_++;
+}
+
+std::optional<TokenId> ReverseIndex::GetTokenId(const NGram& token) const {
+    if (auto res = dictionary_.Find(token); res.has_value()) {
+        TokenId ret;
+        std::memcpy(&ret, res->data(), sizeof(ret));
+        return ret;
+    }
+    return std::nullopt;
 }
 
 std::optional<TokenId> ReverseIndex::GetTokenId(const Token& token) const {
@@ -241,9 +344,11 @@ ReverseIndex::BitMap ReverseIndex::GetBitmap(const Key& key) const {
     return bitmap;
 }
 
-const std::unordered_set<std::string> MyLSMTree::ReverseIndex::ReverseIndex::stop_words_ = {
-    "a",  "an",  "the",   "and",   "or",    "but",    "if",    "then", "else", "in",   "on",    "at",
-    "by", "for", "with",  "of",    "to",    "from",   "is",    "are",  "was",  "were", "be",    "been",
-    "do", "can", "could", "would", "shall", "should", "might", "must", "this", "that", "these", "those"};
+const std::unordered_map<utf8::utfchar32_t, std::string> MyLSMTree::ReverseIndex::ReverseIndex::fold_map_ = {
+    {U'é', "e"}, {U'É', "e"}, {U'è', "e"},  {U'È', "e"},  {U'ê', "e"},  {U'Ê', "e"},  {U'ë', "e"},  {U'Ë', "e"},
+    {U'á', "a"}, {U'Á', "a"}, {U'à', "a"},  {U'À', "a"},  {U'â', "a"},  {U'Â', "a"},  {U'ä', "a"},  {U'Ä', "a"},
+    {U'í', "i"}, {U'Í', "i"}, {U'ï', "i"},  {U'Ï', "i"},  {U'ó', "o"},  {U'Ó', "o"},  {U'ö', "o"},  {U'Ö', "o"},
+    {U'ø', "o"}, {U'Ø', "o"}, {U'ú', "u"},  {U'Ú', "u"},  {U'ü', "u"},  {U'Ü', "u"},  {U'ñ', "n"},  {U'Ñ', "n"},
+    {U'ç', "c"}, {U'Ç', "c"}, {U'ß', "ss"}, {U'ẞ', "ss"}, {U'œ', "oe"}, {U'Œ', "oe"}, {U'æ', "ae"}, {U'Æ', "ae"}};
 
 }  // namespace MyLSMTree::ReverseIndex
