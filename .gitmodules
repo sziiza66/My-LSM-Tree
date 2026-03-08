@@ -4,9 +4,6 @@
 [submodule "third_party/xxHash"]
 	path = third_party/xxHash
 	url = https://github.com/Cyan4973/xxHash.git
-[submodule "third_party/spacy-cpp"]
-	path = third_party/spacy-cpp
-	url = https://github.com/d99kris/spacy-cpp.git
 [submodule "third_party/utfcpp"]
 	path = third_party/utfcpp
 	url = https://github.com/nemtrif/utfcpp.git
