@@ -18,6 +18,10 @@ namespace MyLSMTree::ReverseIndex::BoolAst {
         '~' => { ret = BoolParser::token::NOT; fbreak; };
         '(' => { ret = BoolParser::token::LPAR; fbreak; };
         ')' => { ret = BoolParser::token::RPAR; fbreak; };
+        '>' => { ret = BoolParser::token::GE; fbreak; };
+        '<' => { ret = BoolParser::token::LE; fbreak; };
+        '>=' => { ret = BoolParser::token::GEQ; fbreak; };
+        '<=' => { ret = BoolParser::token::LEQ; fbreak; };
         operand => {
             val->emplace<std::string>(std::string(ts, te - ts));
             ret = BoolParser::token::OPERAND;

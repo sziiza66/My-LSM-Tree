@@ -1,11 +1,11 @@
 #include "reverse_index/tests.h"
 
-
 int main() {
     
-    // BuildLargeIndex();
-    TestLargeIndex();
-
+    // BuildSmallIndex();
+    // TestSmallIndex();
+    TestSmallIndexCreatedRanges();
+    TestSmallIndexValidRanges();
 
     return 0;
 }

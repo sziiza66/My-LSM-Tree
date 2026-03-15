@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <variant>
 #include <vector>
@@ -65,5 +66,15 @@ AstPtr MakeArgNode(Operand arg);
 AstPtr MakeNotNode(AstPtr op);
 AstPtr MakeAndNode(AstPtr lop, AstPtr rop);
 AstPtr MakeOrNode(AstPtr lop, AstPtr rop);
+
+enum class CompOp {
+    le,
+    ge,
+    leq,
+    geq,
+};
+
+uint64_t ToUint64(const std::string& str);
+AstPtr MakeNumericComparisonAst(TokenId id_start, uint64_t num, CompOp opcode);
 
 }  // namespace MyLSMTree::ReverseIndex::BoolAst
