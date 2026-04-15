@@ -26,17 +26,20 @@ public:
     explicit ReverseIndex(const Path& index_data);
     ~ReverseIndex();
 
+    void InsertDocuments(const std::vector<Path>& doc_path);
     void InsertDocument(const Path& doc_path);
     std::vector<Path> LookupWithExpression(const std::string& query) const;
+    void PrintPostingLists(const std::vector<Token>& tokens);
 
 private:
+    void InsertDocumentInternal(const Path& doc_path, NlpWrapper& nlp);
     TokenId GetTokenIdAndInsert(const Token& token);
     std::optional<TokenId> GetTokenId(const Token& token) const;
     void AssociateTokenWithDocument(TokenId token_id, DocId doc_id);
+    void AppendPostingList(TokenId token_id, DocId doc_id, std::vector<uint32_t> positions);
     Key GetLSMKeyFromToken(Token token) const;
     std::vector<Path> LookupWithAst(const Ast& ast) const;
     BitMap LookupBitmapWithAst(const Ast& ast, const BitMap& whole) const;
-    BitMap GetBitmap(const Key& key) const;
 
 private:
     LSMTree index_;

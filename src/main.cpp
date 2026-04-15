@@ -3,8 +3,10 @@
 
 int main() {
     
+    // PrintPostingLists();
     // BuildLargeIndex();
     TestLargeIndex();
+
 
 
     return 0;

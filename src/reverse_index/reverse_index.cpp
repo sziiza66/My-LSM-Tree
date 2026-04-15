@@ -1,5 +1,7 @@
 #include "reverse_index.h"
+#include <strings.h>
 
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -7,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "common.h"
 #include "parser/parser_wrapper.h"
 #include "roaring.hh"
 #include "utf8/checked.h"
@@ -22,6 +25,58 @@ struct Overloaded : Ts... {
 
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
+
+class PostingListIterator {
+public:
+    PostingListIterator(const std::vector<uint8_t>& list)
+        : pos_ptr_(list.data() + 2 * sizeof(uint64_t))
+        , doc_ptr_(list.data())
+        , end_ptr_(list.data() + list.size()) {
+        uint64_t pos_cnt;
+        std::memcpy(&pos_cnt, doc_ptr_ + sizeof(uint64_t), sizeof(pos_cnt));
+        pos_end_ptr_ = pos_ptr_ + pos_cnt * sizeof(uint32_t);
+    }
+
+    bool AdvanceDoc() {
+        uint64_t pos_cnt;
+        std::memcpy(&pos_cnt, doc_ptr_ + sizeof(uint64_t), sizeof(pos_cnt));
+        const uint8_t* new_doc_ptr = doc_ptr_ + 2 * sizeof(uint64_t) + pos_cnt * sizeof(uint32_t);
+        if (new_doc_ptr >= end_ptr_) {
+            return false;
+        }
+        doc_ptr_ = new_doc_ptr;
+        pos_ptr_ = doc_ptr_ + 2 * sizeof(uint64_t);
+        std::memcpy(&pos_cnt, doc_ptr_ + sizeof(uint64_t), sizeof(pos_cnt));
+        pos_end_ptr_ = pos_ptr_ + pos_cnt * sizeof(uint32_t);
+        return true;
+    }
+
+    bool AdvancePos() {
+        if (pos_ptr_ + sizeof(uint32_t) >= pos_end_ptr_) {
+            return false;
+        }
+        pos_ptr_ += sizeof(uint32_t);
+        return true;
+    }
+
+    uint64_t GetDocId() const {
+        uint64_t doc_id;
+        std::memcpy(&doc_id, doc_ptr_, sizeof(doc_id));
+        return doc_id;
+    }
+
+    uint32_t GetPos() const {
+        uint32_t pos;
+        std::memcpy(&pos, pos_ptr_, sizeof(pos));
+        return pos;
+    }
+
+private:
+    const uint8_t* pos_ptr_;
+    const uint8_t* doc_ptr_;
+    const uint8_t* end_ptr_;
+    const uint8_t* pos_end_ptr_;
+};
 
 }  // namespace
 
@@ -49,7 +104,15 @@ ReverseIndex::~ReverseIndex() {
     out << token_count_ << ' ' << doc_count_;
 }
 
-void ReverseIndex::InsertDocument(const Path& doc_path) {
+void ReverseIndex::InsertDocuments(const std::vector<Path>& doc_paths) {
+    NlpWrapper nlp = spacy_.load("en_core_web_lg");
+    for (const auto& doc_path : doc_paths) {
+        std::cout << "Insetring " << doc_path << std::endl;
+        InsertDocumentInternal(doc_path, nlp);
+    }
+}
+
+void ReverseIndex::InsertDocumentInternal(const Path& doc_path, NlpWrapper& nlp) {
     std::string normal_doc_path = doc_path.lexically_normal().string();
     std::ifstream in(doc_path, std::ios::binary | std::ios::ate);
     if (!in) {
@@ -70,10 +133,10 @@ void ReverseIndex::InsertDocument(const Path& doc_path) {
     documents_.Insert(key, value);
 
     constexpr size_t chunk_size = 1024 * 1024 / 2;
-    std::set<TokenId> token_ids;
+    std::unordered_map<TokenId, std::vector<uint32_t>> pos_mapping;
+    std::unordered_map<std::string, TokenId> ids_cache;
     auto tolower = [](unsigned char c) { return std::tolower(c); };
-    NlpWrapper nlp = spacy_.load("en_core_web_lg");
-    for (size_t chunk_start = 0, chunk_end = 0; chunk_start < text.size(); chunk_start = chunk_end) {
+    for (size_t chunk_start = 0, chunk_end = 0, pos = 0; chunk_start < text.size(); chunk_start = chunk_end) {
         chunk_end = chunk_start + chunk_size < text.size() ? chunk_start + chunk_size : text.size();
         while (chunk_end > chunk_start && (text[chunk_end - 1] & 0xC0) == 0x80) {
             --chunk_end;
@@ -98,13 +161,108 @@ void ReverseIndex::InsertDocument(const Path& doc_path) {
                 continue;
             }
             std::transform(lemma.begin(), lemma.end(), lemma.begin(), tolower);
-            token_ids.insert(GetTokenIdAndInsert(lemma));
+            if (lemma == "about") {
+                int x = 0;
+            }
+            TokenId tid;
+            auto it = ids_cache.find(lemma);
+            if (it == ids_cache.end()) {
+                tid = GetTokenIdAndInsert(lemma);
+                ids_cache[lemma] = tid;
+                pos_mapping[tid] = {};
+            } else {
+                tid = it->second;
+            }
+            pos_mapping[tid].push_back(pos);
+            ++pos;
         }
         // std::cout << "chunk done" << std::endl;
     }
 
-    for (auto token_id : token_ids) {
-        AssociateTokenWithDocument(token_id, doc_count_);
+    for (const auto& [token_id, positions] : pos_mapping) {
+        // AssociateTokenWithDocument(token_id, doc_count_);
+        if (token_id == 648) {
+            int x = 0;
+        }
+        AppendPostingList(token_id, doc_count_, positions);
+    }
+    ++doc_count_;
+}
+
+void ReverseIndex::InsertDocument(const Path& doc_path) {
+    std::string normal_doc_path = doc_path.lexically_normal().string();
+    std::ifstream in(doc_path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        throw std::runtime_error(std::string("Can't open file ") + normal_doc_path.c_str());
+    }
+    auto text_size = in.tellg();
+    std::string text;
+    text.resize(text_size);
+    in.seekg(0);
+    if (!in.read(&text[0], text_size)) {
+        throw std::runtime_error(std::string("Can't read file ") + normal_doc_path.c_str());
+    }
+
+    Key key(sizeof(doc_count_));
+    std::memcpy(key.data(), &doc_count_, sizeof(doc_count_));
+    std::string doc_name = doc_path.filename();
+    Value value(doc_name.begin(), doc_name.end());
+    documents_.Insert(key, value);
+
+    constexpr size_t chunk_size = 1024 * 1024 / 2;
+    std::unordered_map<TokenId, std::vector<uint32_t>> pos_mapping;
+    std::unordered_map<std::string, TokenId> ids_cache;
+    auto tolower = [](unsigned char c) { return std::tolower(c); };
+    NlpWrapper nlp = spacy_.load("en_core_web_lg");
+    for (size_t chunk_start = 0, chunk_end = 0, pos = 0; chunk_start < text.size(); chunk_start = chunk_end) {
+        chunk_end = chunk_start + chunk_size < text.size() ? chunk_start + chunk_size : text.size();
+        while (chunk_end > chunk_start && (text[chunk_end - 1] & 0xC0) == 0x80) {
+            --chunk_end;
+        }
+        size_t word_end = chunk_end;
+        while (word_end > chunk_start && !std::isspace(text[word_end - 1])) {
+            --word_end;
+        }
+        chunk_end = word_end != chunk_start ? word_end : chunk_end;
+        chunk_end = chunk_end == chunk_start
+                        ? (chunk_start + chunk_size < text.size() ? chunk_start + chunk_size : text.size())
+                        : chunk_end;
+        std::string chunk =
+            utf8::replace_invalid(std::string_view(text.data() + chunk_start, chunk_end - chunk_start), U' ');
+        auto parsed = nlp.parse(chunk);
+        for (const auto& token : parsed.tokens()) {
+            if (token.is_punct() || token.is_space()) {
+                continue;
+            }
+            auto lemma = token.lemma_();
+            if (stop_words_.find(lemma) != stop_words_.end()) {
+                continue;
+            }
+            std::transform(lemma.begin(), lemma.end(), lemma.begin(), tolower);
+            if (lemma == "about") {
+                int x = 0;
+            }
+            TokenId tid;
+            auto it = ids_cache.find(lemma);
+            if (it == ids_cache.end()) {
+                tid = GetTokenIdAndInsert(lemma);
+                ids_cache[lemma] = tid;
+                pos_mapping[tid] = {};
+            } else {
+                tid = it->second;
+            }
+            pos_mapping[tid].push_back(pos);
+            ++pos;
+        }
+        // std::cout << "chunk done" << std::endl;
+    }
+
+    for (const auto& [token_id, positions] : pos_mapping) {
+        // AssociateTokenWithDocument(token_id, doc_count_);
+        if (token_id == 648) {
+            int x = 0;
+        }
+        AppendPostingList(token_id, doc_count_, positions);
     }
     ++doc_count_;
 }
@@ -160,19 +318,25 @@ std::optional<TokenId> ReverseIndex::GetTokenId(const Token& token) const {
     return std::nullopt;
 }
 
-void ReverseIndex::AssociateTokenWithDocument(TokenId token_id, DocId doc_id) {
+void ReverseIndex::AppendPostingList(TokenId token_id, DocId doc_id, std::vector<uint32_t> positions) {
     Key key(sizeof(token_id));
     std::memcpy(key.data(), &token_id, sizeof(token_id));
-    BitMap bitmap = GetBitmap(key);
-    bitmap.add(doc_id);
-    Value new_value(bitmap.getSizeInBytes());
-    bitmap.write(reinterpret_cast<char*>(new_value.data()), true);
-    // std::cout << "ADD: ";
-    // for (uint8_t byte : new_value) {
-    //     std::cout << static_cast<uint64_t>(byte) << ' ';
-    // }
-    // std::cout << "\n" << bitmap.cardinality() << "\n\n";
-    index_.Insert(key, new_value);
+
+    std::vector<uint8_t> new_posting_lists;
+    auto posting_lists = index_.Find(key);
+    size_t original_size = 0;
+    if (posting_lists) {
+        original_size = posting_lists->size();
+        new_posting_lists = std::move(*posting_lists);
+    } // 104
+
+    size_t pos_cnt = positions.size();
+    new_posting_lists.resize(original_size + sizeof(doc_id) + sizeof(pos_cnt) + sizeof(positions[0]) * positions.size());
+    std::memcpy(&new_posting_lists[original_size], &doc_id, sizeof(doc_id));
+    std::memcpy(&new_posting_lists[original_size + sizeof(doc_id)], &pos_cnt, sizeof(pos_cnt));
+    std::memcpy(&new_posting_lists[original_size + sizeof(doc_id) + sizeof(pos_cnt)], positions.data(), sizeof(positions[0]) * positions.size());
+
+    index_.Insert(key, new_posting_lists);
 }
 
 Key ReverseIndex::GetLSMKeyFromToken(Token token) const {
@@ -198,52 +362,138 @@ std::vector<Path> ReverseIndex::LookupWithAst(const Ast& ast) const {
 ReverseIndex::BitMap ReverseIndex::LookupBitmapWithAst(const Ast& ast, const BitMap& whole) const {
     return std::visit(
         Overloaded{[&](const ArgNode& node) {
-                       Key key(sizeof(TokenId));
-                       BitMap res = whole;
-                       for (auto token_id : node.GetOperand()) {
-                           std::memcpy(key.data(), &token_id, sizeof(token_id));
-                           res &= GetBitmap(key);
-                           if (res.isEmpty()) {
-                               break;
-                           }
-                       }
-                       return res;
-                   },
-                   [&](const NotNode& node) { return whole - LookupBitmapWithAst(node.GetOperand(), whole); },
-                   [&](const AndNode& node) {
-                       auto left = LookupBitmapWithAst(node.GetLeftOperand(), whole);
-                       if (left.isEmpty()) {
-                           return left;
-                       }
-                       return left & LookupBitmapWithAst(node.GetRightOperand(), whole);
-                   },
-                   [&](const OrNode& node) {
-                       auto left = LookupBitmapWithAst(node.GetLeftOperand(), whole);
-                       if (left.cardinality() == whole.cardinality()) {
-                           return left;
-                       }
-                       return left | LookupBitmapWithAst(node.GetRightOperand(), whole);
-                   }},
+                        Key key(sizeof(TokenId));
+                        BitMap res = BitMap();
+                        std::vector<std::vector<uint8_t>> lists;
+                        std::vector<PostingListIterator> iters;
+                        lists.reserve(node.GetOperand().size());
+                        iters.reserve(node.GetOperand().size());
+                        std::unordered_map<TokenId, size_t> ind_map;
+                        for (auto token_id : node.GetOperand()) {
+                            auto it = ind_map.find(token_id);
+                            if (it == ind_map.end()) {
+                                ind_map[token_id] = lists.size();
+                                std::memcpy(key.data(), &token_id, sizeof(token_id));
+                                auto posting = index_.Find(key);
+                                if (posting) {
+                                    lists.emplace_back(std::move(*posting));
+                                } else {
+                                    return res;
+                                }
+                                iters.emplace_back(lists.back());
+                            } else {
+                                iters.emplace_back(lists[it->second]);
+                            }
+                        }
+
+                        DocId max_doc = iters[0].GetDocId();
+
+                        auto AdvanceAllDocs = [&]() {
+                            size_t max_cnt = 0;
+                            for (size_t i = 0; ; i = (i + 1) % iters.size()) {
+                                DocId nxt_doc = iters[i].GetDocId();
+                                while (nxt_doc < max_doc) {
+                                    if (!iters[i].AdvanceDoc()) {
+                                        return false;
+                                    }
+                                    nxt_doc = iters[i].GetDocId();
+                                }
+                                if (nxt_doc == max_doc) {
+                                    ++max_cnt;
+                                } else {
+                                    max_cnt = 1;
+                                    max_doc = nxt_doc;
+                                }
+                                if (max_cnt == lists.size()) {
+                                    return true;
+                                }
+                            }
+                            assert(false);
+                            return false;
+                        };
+
+                        auto FindPos = [&]() {
+                            uint32_t max_pos = iters[0].GetPos();
+                            size_t max_cnt = 0;
+                            for (size_t i = 0; ; i = (i + 1) % iters.size()) {
+                                uint32_t nxt_pos = iters[i].GetPos();
+                                while (nxt_pos < max_pos + i) {
+                                    if (!iters[i].AdvancePos()) {
+                                        return false;
+                                    }
+                                    nxt_pos = iters[i].GetPos();
+                                }
+                                if (nxt_pos == max_pos + i) {
+                                    ++max_cnt;
+                                } else {
+                                    max_cnt = 1;
+                                    assert(nxt_pos >= i);
+                                    max_pos = nxt_pos - i;
+                                }
+                                if (max_cnt == lists.size()) {
+                                    return true;
+                                }
+                            }
+                            assert(false);
+                            return false;
+                        };
+                        
+                        while (AdvanceAllDocs()) {
+                            if (FindPos()) {
+                                res.add(max_doc);
+                            }
+                            if (!iters[0].AdvanceDoc()) {
+                                break;
+                            }
+                        }
+
+                        return res;
+                    },
+                    [&](const NotNode& node) {
+                        return whole - LookupBitmapWithAst(node.GetOperand(), whole);
+                    },
+                    [&](const AndNode& node) {
+                        auto left = LookupBitmapWithAst(node.GetLeftOperand(), whole);
+                        if (left.isEmpty()) {
+                            return left;
+                        }
+                        return left & LookupBitmapWithAst(node.GetRightOperand(), whole);
+                    },
+                    [&](const OrNode& node) {
+                        auto left = LookupBitmapWithAst(node.GetLeftOperand(), whole);
+                        if (left.cardinality() == whole.cardinality()) {
+                            return left;
+                        }
+                        return left | LookupBitmapWithAst(node.GetRightOperand(), whole);
+                    }},
         ast);
 }
 
-ReverseIndex::BitMap ReverseIndex::GetBitmap(const Key& key) const {
-    auto value = index_.Find(key);
-    BitMap bitmap = BitMap();
-    if (value.has_value()) {
-        bitmap = BitMap::read(reinterpret_cast<const char*>(value->data()), true);
-        // std::cout << "GET: ";
-        // for (uint8_t byte : *value) {
-        //     std::cout << static_cast<uint64_t>(byte) << ' ';
-        // }
-        // std::cout << '\n' << bitmap.cardinality() << "\n\n";
-    }
-    return bitmap;
-}
-
 const std::unordered_set<std::string> MyLSMTree::ReverseIndex::ReverseIndex::stop_words_ = {
-    "a",  "an",  "the",   "and",   "or",    "but",    "if",    "then", "else", "in",   "on",    "at",
-    "by", "for", "with",  "of",    "to",    "from",   "is",    "are",  "was",  "were", "be",    "been",
-    "do", "can", "could", "would", "shall", "should", "might", "must", "this", "that", "these", "those"};
+    "a",  "an",  "the"
+};
+
+void ReverseIndex::PrintPostingLists(const std::vector<Token>& tokens) {
+    Key key(sizeof(TokenId));
+    for (const auto& token : tokens) {
+        std::cout << token << " ---------------------------------------------------------------------\n";
+        auto token_id = GetTokenId(token);
+        if (token_id) {
+            std::memcpy(key.data(), &*token_id, sizeof(*token_id));
+            auto posting = index_.Find(key);
+            if (posting) {
+                PostingListIterator iter(*posting);
+                do {
+                    DocId doc_id = iter.GetDocId();
+                    std::cout << doc_id << " _________________________\n";
+                    do {
+                        uint32_t pos = iter.GetPos();
+                        std::cout << pos << '\n';
+                    } while (iter.AdvancePos());
+                } while (iter.AdvanceDoc());
+            }
+        }
+    }
+}
 
 }  // namespace MyLSMTree::ReverseIndex

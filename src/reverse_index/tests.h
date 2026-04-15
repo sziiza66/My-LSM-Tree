@@ -20,6 +20,13 @@ void RunLookups(const MyLSMTree::ReverseIndex::ReverseIndex& index, const std::v
 
 }  // namespace
 
+void PrintPostingLists() {
+    MyLSMTree::ReverseIndex::ReverseIndex index(large_index_dir);
+    index.PrintPostingLists(
+        {"about", "seven"}
+    );
+}
+
 void BuildLargeIndex() {
     MyLSMTree::TreeConstructorProps props = {
         .fd_cache_size = 10,
@@ -31,34 +38,33 @@ void BuildLargeIndex() {
     std::cout << "Initialising index" << std::endl;
     MyLSMTree::ReverseIndex::ReverseIndex index(large_index_dir, props, props, props);
     MyLSMTree::Path docs_dir = large_index_dir / "documents";
+    // for (const auto& entry : std::filesystem::directory_iterator(docs_dir)) {
+    //     if (!entry.is_regular_file())
+    //         continue;
+    //     auto path = entry.path();
+    //     std::cout << "Inserting: " << path << std::endl;
+    //     index.InsertDocument(path);
+    //     std::cout << "Inserted." << std::endl;
+    // }
+    std::vector<std::filesystem::path> paths;
     for (const auto& entry : std::filesystem::directory_iterator(docs_dir)) {
         if (!entry.is_regular_file())
             continue;
-        auto path = entry.path();
-        std::cout << "Inserting: " << path << std::endl;
-        index.InsertDocument(path);
-        std::cout << "Inserted." << std::endl;
+        paths.emplace_back(entry.path());
     }
+    index.InsertDocuments(paths);
     std::cout << "Large index built." << std::endl;
 }
 
 void TestLargeIndex() {
     const std::vector<std::string> queries = {
-        "Epstein",
-        "Tsarsko-Selski & idiot",
-        "Epstein | (Tsarsko-Selski & idiot)",
-        "chemistry & catalyst",
-        "science & theorems",
-        "(science & theorems) | chemistry",
-        "(science & theorems) & ~chemistry",
-        "(politics & war & society & history) & (USSR | Russia)",
-        "(politics & war & society & history) & ~(USSR | Russia)",
-
-        "2:11 & For & he & that & said, & Do & not & commit & adultery, & said & also, & "\
-        "Do & not & kill. & Now & if & thou & commit & no & adultery, & yet & if & "\
-        "thou & kill, & thou & art & become & a & transgressor & of & the & law.",
-
-        "1999 | 2000 | 1901 | 1990",
+        "About seven in the evening",
+        "call it a day",
+        "do not kill",
+        "daily food",
+        "do not kill & daily food",
+        "do not kill | daily food",
+        "daily food & ~(do not kill)"
     };
 
     std::cout << "Initialising index" << std::endl;
@@ -66,3 +72,4 @@ void TestLargeIndex() {
 
     RunLookups(index, queries);
 }
+

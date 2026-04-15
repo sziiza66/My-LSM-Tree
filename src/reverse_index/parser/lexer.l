@@ -8,11 +8,12 @@ namespace MyLSMTree::ReverseIndex::BoolAst {
     machine bool_lexer;
 
     escape = '\\' any;
-    operand_char = (any - [|&~() \t\r\n\\]) | escape;
-    operand = operand_char+;
+    spaces = [ \t\r\n];
+
+    operand = ( (any - [|&~()\\]) | escape )+;
 
     main := |*
-        [ \t\r\n]+;
+        spaces+;
         '&' => { ret = BoolParser::token::AND; fbreak; };
         '|' => { ret = BoolParser::token::OR; fbreak; };
         '~' => { ret = BoolParser::token::NOT; fbreak; };
